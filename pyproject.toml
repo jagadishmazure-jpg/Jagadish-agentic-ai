@@ -16,6 +16,8 @@ dependencies = [
     "opentelemetry-sdk>=1.45.0",
     "pyyaml>=6.0.3",
     "fastapi>=0.115",
+    "scikit-learn>=1.6,<2",
+    "numpy>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -40,7 +42,7 @@ addopts = "-q --import-mode=importlib"
 testpaths = ["shared", "projects"]
 # Project folders have hyphens (e.g. 03-refund-agent), so each project's
 # importable package lives one level down and is put on the path here.
-pythonpath = [".", "projects/03-refund-agent", "projects/10-supply-chain-multi-agent", "projects/01-policy-qa-rag", "projects/02-ticket-triage", "projects/04-sales-meeting-prep", "projects/05-invoice-po-matching", "projects/06-incident-investigator", "projects/07-rfp-response", "projects/08-contract-review", "projects/09-collections-agent", "projects/11-customer-care-e2e", "projects/12-agent-control-plane", "projects/13-insurance-fnol-coverage", "projects/14-healthcare-prior-auth", "projects/15-banking-credit-memo", "projects/16-telecom-outage-care", "projects/17-automotive-technician-copilot", "projects/18-logistics-exception-agent"]
+pythonpath = [".", "projects/03-refund-agent", "projects/10-supply-chain-multi-agent", "projects/01-policy-qa-rag", "projects/02-ticket-triage", "projects/04-sales-meeting-prep", "projects/05-invoice-po-matching", "projects/06-incident-investigator", "projects/07-rfp-response", "projects/08-contract-review", "projects/09-collections-agent", "projects/11-customer-care-e2e", "projects/12-agent-control-plane", "projects/13-insurance-fnol-coverage", "projects/14-healthcare-prior-auth", "projects/15-banking-credit-memo", "projects/16-telecom-outage-care", "projects/17-automotive-technician-copilot", "projects/18-logistics-exception-agent", "projects/19-finetune-vs-prompting", "projects/20-long-term-memory-agent"]
 
 [tool.ruff]
 line-length = 100
@@ -52,4 +54,4 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 ignore = ["RUF001"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["shared", "refund_agent", "supply_chain", "policy_qa", "ticket_triage", "meeting_prep", "invoice_match", "incident_agent", "rfp_agent", "contract_review", "collections_agent", "care_e2e", "control_plane", "fnol", "prior_auth", "credit_memo", "outage_care", "tech_copilot", "exception_agent"]
+known-first-party = ["shared", "refund_agent", "supply_chain", "policy_qa", "ticket_triage", "meeting_prep", "invoice_match", "incident_agent", "rfp_agent", "contract_review", "collections_agent", "care_e2e", "control_plane", "fnol", "prior_auth", "credit_memo", "outage_care", "tech_copilot", "exception_agent", "finetune_lab", "memory_agent"]
