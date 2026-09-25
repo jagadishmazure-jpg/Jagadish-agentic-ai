@@ -68,7 +68,7 @@ class EvalReport:
         return {
             "project": self.project,
             "n": len(self.cases),
-            "metrics": {k: round(v, 6) for k, v in self.metrics.items()},
+            "metrics": {k: None if v is None else round(v, 6) for k, v in self.metrics.items()},
             "thresholds": self.thresholds,
             "passed": self.passed,
             "violations": self.violations,
@@ -112,7 +112,7 @@ def run_suite(
     calls = sum(r.tool_calls or 0 for r in results)
     metrics = {
         "task_success": sum(r.success for r in results) / n,
-        "groundedness": (sum(grounded) / len(grounded)) if grounded else 1.0,
+        "groundedness": (sum(grounded) / len(grounded)) if grounded else None,  # n/a
         "policy_violation_rate": sum(r.policy_violation for r in results) / n,
         "tool_error_rate": (sum(r.tool_errors or 0 for r in results) / calls) if calls else 0.0,
         "cost_per_task": sum(r.cost_usd or 0.0 for r in results) / n,
@@ -127,7 +127,7 @@ def run_suite(
 _OPS = {">=": operator.ge, "<=": operator.le, ">": operator.gt, "<": operator.lt, "==": operator.eq}
 
 
-def check_thresholds(metrics: dict[str, float], thresholds: dict[str, str]) -> list[str]:
+def check_thresholds(metrics: dict[str, float | None], thresholds: dict[str, str]) -> list[str]:
     out = []
     for name, rule in thresholds.items():
         m = re.fullmatch(r"\s*(>=|<=|==|>|<)\s*([0-9.eE+-]+)\s*", str(rule))
@@ -135,6 +135,9 @@ def check_thresholds(metrics: dict[str, float], thresholds: dict[str, str]) -> l
             out.append(f"bad threshold {name}: {rule}")
             continue
         op, bound = m.group(1), float(m.group(2))
+        if metrics[name] is None:
+            out.append(f"{name} is n/a (no case produced a scorable value) but has a threshold")
+            continue
         if not _OPS[op](metrics[name], bound):
             out.append(f"{name} = {metrics[name]:.4f} violates {op} {bound}")
     return out

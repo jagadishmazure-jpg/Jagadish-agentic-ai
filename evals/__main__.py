@@ -52,7 +52,12 @@ def main(argv: list[str] | None = None) -> int:
         report = run_suite(card.project, cases, resolve(card.eval.suite), card.eval.thresholds)
         m = report.metrics
         cells = " ".join(
-            f"{m[k]:>14.5f}" if k == "cost_per_task" else f"{m[k]:>14.2f}" for k in METRICS
+            f"{'n/a':>14}"
+            if m[k] is None
+            else f"{m[k]:>14.5f}"
+            if k == "cost_per_task"
+            else f"{m[k]:>14.2f}"
+            for k in METRICS
         )
         print(f"{card.project:32} {len(cases):>3} {cells}  {'PASS' if report.passed else 'FAIL'}")
         for v in report.violations:

@@ -246,7 +246,9 @@ def validate_project(project_dir: Path, check_scores: bool = True) -> list[str]:
 
 
 # ------------------------------------------------------------------------------ render
-def _fmt_metric(name: str, v: float) -> str:
+def _fmt_metric(name: str, v: float | None) -> str:
+    if v is None:
+        return "n/a"
     return f"${v:.5f}" if name == "cost_per_task" else f"{v:.2f}"
 
 
