@@ -102,8 +102,10 @@ class ChaosScenario(_Strict):
     @classmethod
     def _fault(cls, v: str) -> str:
         base = v.split("*")[0]
-        if base != "jailbreak" and base.split(":")[0] not in ("model", "retrieval", "sor"):
-            raise ValueError("fault must be model[:x] | retrieval[:x] | sor[:x] | jailbreak")
+        if base != "jailbreak" and base.split(":")[0] not in ("model", "retrieval", "sor", "a2a"):
+            raise ValueError(
+                "fault must be model[:x] | retrieval[:x] | sor[:x] | a2a[:agent] | jailbreak"
+            )
         return v
 
 
@@ -170,6 +172,7 @@ class DoctrineCard(_Strict):
             {"model", "jailbreak"}
             | ({"retrieval"} if self.knowledge.corpora else set())
             | ({"sor"} if self.contracts.mcp else set())
+            | ({"a2a"} if self.contracts.a2a else set())
         )
         if need - kinds:
             raise ValueError(f"chaos must cover {sorted(need - kinds)}")

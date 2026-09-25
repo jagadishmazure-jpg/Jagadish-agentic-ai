@@ -20,6 +20,11 @@ def connect_backends(backends: dict[str, Any]) -> dict[str, McpConnection]:
     }
 
 
+def connect_servers(servers: dict[str, Any]) -> dict[str, McpConnection]:
+    """Project-owned ``SorServer``s (industry domains not in BUILDERS) -> connections."""
+    return {name: McpConnection(name, server=srv.mcp) for name, srv in servers.items()}
+
+
 async def load_stdio_tools_with_adapters(domain: str) -> list[BaseTool]:
     """Load a domain server's tools over stdio using ``langchain-mcp-adapters``
     (MultiServerMCPClient) - the portable path for async agents / other frameworks."""

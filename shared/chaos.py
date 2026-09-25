@@ -23,6 +23,7 @@ FAULT_NAMES = {
     "model": "model",
     "retrieval": "retrieval",
     "sor": "sor",
+    "a2a": "a2a",
 }
 
 
