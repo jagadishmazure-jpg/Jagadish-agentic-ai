@@ -1,9 +1,9 @@
 """Sync MCP client connection for LangGraph nodes.
 
-Holds a real MCP ``ClientSession`` (JSON-RPC over the SDK's in-memory transport for an
-in-process FastMCP server, or over stdio for a subprocess server) on one background event
-loop, and exposes blocking ``call()`` / ``list_tools()`` with timeouts so synchronous graph
-nodes can use MCP without async plumbing.
+Holds a real MCP ``ClientSession`` on one background event loop - over the SDK's in-memory
+transport (in-process FastMCP server), stdio (subprocess server) or streamable HTTP (remote
+server container) - and exposes blocking ``call()`` / ``list_tools()`` with timeouts so
+synchronous graph nodes can use MCP without async plumbing.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from typing import Any
 
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 
@@ -64,15 +65,18 @@ class McpConnection:
         *,
         server: FastMCP | None = None,
         stdio: StdioServerParameters | None = None,
+        url: str | None = None,
         connect_timeout_s: float = 20.0,
     ):
-        if (server is None) == (stdio is None):
-            raise ValueError("pass exactly one of server= or stdio=")
+        if sum(x is not None for x in (server, stdio, url)) != 1:
+            raise ValueError("pass exactly one of server=, stdio= or url=")
         self.name = name
-        self.transport = "memory" if server is not None else "stdio"
+        self.transport = "memory" if server is not None else "stdio" if stdio else "http"
         self._h = _Holder()
         loop = background_loop()
-        self._h.task = asyncio.run_coroutine_threadsafe(self._hold(self._h, server, stdio), loop)
+        self._h.task = asyncio.run_coroutine_threadsafe(
+            self._hold(self._h, server, stdio, url), loop
+        )
         if not self._h.ready.wait(connect_timeout_s):
             raise TimeoutError(f"MCP server {name} did not start")
         if self._h.error:
@@ -82,7 +86,10 @@ class McpConnection:
 
     @staticmethod
     async def _hold(
-        h: _Holder, server: FastMCP | None, stdio: StdioServerParameters | None
+        h: _Holder,
+        server: FastMCP | None,
+        stdio: StdioServerParameters | None,
+        url: str | None = None,
     ) -> None:
         h.closed = asyncio.Event()
         try:
@@ -93,7 +100,17 @@ class McpConnection:
                     h.session = session
                     h.ready.set()
                     await h.closed.wait()
+            elif url is not None:
+                async with (
+                    streamable_http_client(url) as (read, write, _),
+                    ClientSession(read, write) as session,
+                ):
+                    await session.initialize()
+                    h.session = session
+                    h.ready.set()
+                    await h.closed.wait()
             else:
+                assert stdio is not None
                 async with (
                     stdio_client(stdio) as (read, write),
                     ClientSession(read, write) as session,

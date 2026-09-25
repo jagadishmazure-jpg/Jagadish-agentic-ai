@@ -25,6 +25,11 @@ def connect_servers(servers: dict[str, Any]) -> dict[str, McpConnection]:
     return {name: McpConnection(name, server=srv.mcp) for name, srv in servers.items()}
 
 
+def connect_urls(urls: dict[str, str]) -> dict[str, McpConnection]:
+    """Remote MCP servers over streamable HTTP, e.g. {'oms': 'http://mcp-oms:8000/mcp'}."""
+    return {name: McpConnection(name, url=url) for name, url in urls.items()}
+
+
 async def load_stdio_tools_with_adapters(domain: str) -> list[BaseTool]:
     """Load a domain server's tools over stdio using ``langchain-mcp-adapters``
     (MultiServerMCPClient) - the portable path for async agents / other frameworks."""

@@ -12,7 +12,7 @@ from shared.tools.gateway import (
     ToolGatewayError,
     ToolTimeoutError,
 )
-from shared.tools.harness import connect_backends, connect_servers
+from shared.tools.harness import connect_backends, connect_servers, connect_urls
 
 __all__ = [
     "CallRecord",
@@ -27,4 +27,5 @@ __all__ = [
     "ToolTimeoutError",
     "connect_backends",
     "connect_servers",
+    "connect_urls",
 ]
