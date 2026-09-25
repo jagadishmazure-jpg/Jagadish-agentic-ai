@@ -1,0 +1,33 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	intake(intake)
+	discover(discover)
+	crm(crm)
+	sap(sap)
+	demand(demand)
+	decide(decide)
+	draft_po(draft_po)
+	respond(respond)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> intake;
+	crm --> decide;
+	decide -.-> draft_po;
+	decide -.-> respond;
+	demand --> decide;
+	discover -.-> crm;
+	discover -.-> decide;
+	discover -.-> demand;
+	discover -.-> respond;
+	discover -.-> sap;
+	draft_po --> respond;
+	intake --> discover;
+	sap --> decide;
+	respond --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

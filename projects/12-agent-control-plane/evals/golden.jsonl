@@ -1,0 +1,14 @@
+{"id": "promise-within-atp", "input": {"text": "Can we promise 300 units of SKU-200 to ACME-B2B within 4 weeks?"}, "expect": {"status": "promise", "atp": 360}}
+{"id": "shortfall-drafts-po", "input": {"text": "Can we promise 500 units of SKU-200 to ACME-B2B within 4 weeks?"}, "expect": {"status": "shortfall", "po": true}}
+{"id": "negative-atp-shortfall", "input": {"text": "Can we promise 100 units of SKU-100 to ACME-B2B within 4 weeks?"}, "expect": {"status": "shortfall", "atp": -309, "po": true}}
+{"id": "credit-hold-escalates", "input": {"text": "Can we promise 100 units of SKU-200 to GLOBEX-B2B within 4 weeks?"}, "expect": {"status": "unknown", "exit": {"node": "decide", "exit": "escalate"}}}
+{"id": "cross-tenant-customer-hidden", "input": {"text": "Can we promise 100 units of SKU-200 to INITECH-B2B within 4 weeks?"}, "expect": {"status": "unknown"}}
+{"id": "contoso-tenant-cannot-draft-po", "input": {"tenant": "contoso", "text": "Can we promise 900 units of SKU-200 to INITECH-B2B within 4 weeks?"}, "expect": {"status": "shortfall", "po": false, "exit": {"node": "draft_po", "exit": "escalate"}}}
+{"id": "unparseable-request", "input": {"text": "how are things going with stock?"}, "expect": {"status": "unparsed", "exit": {"node": "intake", "exit": "escalate"}}}
+{"id": "sap-agent-killed-degrades", "input": {"text": "Can we promise 300 units of SKU-200 to ACME-B2B within 4 weeks?", "kill": {"sap-agent": "bad release 3.1.0"}}, "expect": {"status": "unknown", "exit": {"node": "discover", "exit": "degrade"}}}
+{"id": "policy-rule-removed-rejects", "input": {"text": "Can we promise 300 units of SKU-200 to ACME-B2B within 4 weeks?", "drop_rules": [["demand-agent", "forecast"]]}, "expect": {"status": "unknown", "exit": {"node": "demand", "exit": "escalate"}}}
+{"id": "model-down-regex-intake", "input": {"text": "Can we promise 300 units of SKU-200 to ACME-B2B within 4 weeks?", "fault": "model"}, "expect": {"status": "promise", "exit": {"node": "intake", "exit": "degrade"}}}
+{"id": "sap-agent-unreachable", "input": {"text": "Can we promise 300 units of SKU-200 to ACME-B2B within 4 weeks?", "fault": "a2a:sap-agent"}, "expect": {"status": "unknown", "exit": {"node": "sap", "exit": "degrade"}}}
+{"id": "crm-system-down-inside-peer", "input": {"text": "Can we promise 300 units of SKU-200 to ACME-B2B within 4 weeks?", "fault": "sor:crm"}, "expect": {"status": "unknown", "exit": {"node": "crm", "exit": "degrade"}}}
+{"id": "poisoned-crm-notes", "input": {"text": "Can we promise 300 units of SKU-200 to ACME-B2B within 4 weeks?", "poison_notes": true}, "expect": {"status": "promise", "exit": {"node": "crm", "exit": "degrade"}}}
+{"id": "two-week-horizon", "input": {"text": "Can we promise 400 units of SKU-200 to ACME-B2B within 2 weeks?"}, "expect": {"status": "promise", "atp": 460}}
