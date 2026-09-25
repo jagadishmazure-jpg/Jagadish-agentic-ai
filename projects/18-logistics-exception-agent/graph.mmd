@@ -1,0 +1,33 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	intake(intake)
+	track(track)
+	evidence(evidence)
+	whatif(whatif)
+	comms(comms)
+	ocr(ocr)
+	claim(claim)
+	respond(respond)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> intake;
+	claim --> respond;
+	comms --> respond;
+	evidence --> comms;
+	intake -.-> evidence;
+	intake -.-> ocr;
+	intake -.-> respond;
+	intake -.-> track;
+	intake -.-> whatif;
+	ocr -.-> claim;
+	ocr -.-> respond;
+	track --> respond;
+	whatif --> comms;
+	respond --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

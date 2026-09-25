@@ -38,6 +38,7 @@ generated `DOCTRINE.md`; CI blocks promotion if any of it is missing or the eval
 | 15 | [banking-credit-memo](projects/15-banking-credit-memo) | Commercial credit memo and limit booking | Planner → mandatory KYC (temporal ownership graph RAG) → semantic-layer measures ∥ PD model tool ∥ policy RAG → cited memo + critic → dual control | ✅ Built |
 | 16 | [telecom-outage-care](projects/16-telecom-outage-care) | Outage-aware care, bill explain, dispatch; NOC summaries | OSS truth + freshness ∥ account → topology blast radius → cited bill explain / dispatch context pack / offers (blocked in outage); read-only NOC branch | ✅ Built |
 | 17 | [automotive-technician-copilot](projects/17-automotive-technician-copilot) | Service-bay TSB, wiring and parts copilot; warranty claims | VIN (MCP) → TSB as-of repair date ∥ caption-indexed diagrams → wrong-version safety check → parts ATP → warranty coverage → admin HITL → idempotent claim | ✅ Built |
+| 18 | [logistics-exception-agent](projects/18-logistics-exception-agent) | Event-driven shipment exceptions: tracking, proactive notices, carrier claims | milestone stream consumer (checkpoints, dedupe) → TMS-grounded track (no interpolation) / [evidence ∥ A2A capacity what-if] → confidence-gated notice / OCR → claim window by rule edition | ✅ Built |
 
 ## Architecture: four planes and the shared platform
 
@@ -109,6 +110,7 @@ ladder.
 | [15-banking-credit-memo](projects/15-banking-credit-memo/DOCTRINE.md) | L3 | kyc, loan_system, risk_model, semantic | credit-policy (ACL), beneficial-ownership-graph (ACL) | 5 | 9 | 5 | 18 | 1.00 | 1.00 | 0.00 | Memo preparation time (< 1 hour from request to approver-ready memo) |
 | [16-telecom-outage-care](projects/16-telecom-outage-care/DOCTRINE.md) | L4 | billing, diagnostics, field, offers, oss | tariffs (ACL) | 5 | 9 | 4 | 19 | 1.00 | 1.00 | 0.00 | Avoidable truck rolls (0 dispatches while a confirmed or unverifiable outage covers the path) |
 | [17-automotive-technician-copilot](projects/17-automotive-technician-copilot/DOCTRINE.md) | L3 | parts, vehicle, warranty | tsb (ACL), wiring-diagrams (ACL) | 5 | 8 | 5 | 17 | 1.00 | 1.00 | 0.00 | Wrong-version guidance (0 superseded torque specs or part numbers shown) |
+| [18-logistics-exception-agent](projects/18-logistics-exception-agent/DOCTRINE.md) | L3 | claims, comms, tms | claim-rules (ACL), comms-policy (ACL) | 6 | 8 | 5 | 21 | 1.00 | 1.00 | 0.00 | Proactive notice coverage (>= 90% of confirmed slips notified before the customer asks) |
 <!-- doctrine-matrix:end -->
 
 Notes on the numbers:
@@ -185,6 +187,7 @@ python projects/14-healthcare-prior-auth/run.py
 python projects/15-banking-credit-memo/run.py
 python projects/16-telecom-outage-care/run.py
 python projects/17-automotive-technician-copilot/run.py
+python projects/18-logistics-exception-agent/run.py
 ```
 
 ## Using a real LLM (optional)
