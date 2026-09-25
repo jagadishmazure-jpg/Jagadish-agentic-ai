@@ -1,0 +1,32 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	intake(intake)
+	policy(policy)
+	coverage(coverage)
+	fraud(fraud)
+	adjudicate(adjudicate)
+	human_approval(human_approval)
+	finalize(finalize)
+	queue(queue)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> intake;
+	adjudicate --> human_approval;
+	coverage --> adjudicate;
+	fraud --> adjudicate;
+	human_approval --> finalize;
+	intake -.-> policy;
+	intake -.-> queue;
+	policy -.-> adjudicate;
+	policy -.-> coverage;
+	policy -.-> fraud;
+	policy -.-> queue;
+	finalize --> __end__;
+	queue --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

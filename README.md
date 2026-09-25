@@ -33,6 +33,7 @@ generated `DOCTRINE.md`; CI blocks promotion if any of it is missing or the eval
 | 10 | [supply-chain-multi-agent](projects/10-supply-chain-multi-agent) | Replenishment: forecast, stock, sourcing, approved PO | Supervisor multi-agent + parallel `Send` + critic loop + HITL | ✅ Built |
 | 11 | [customer-care-e2e](projects/11-customer-care-e2e) | "My shipment is late, can I get a refund?" end to end | FastAPI BFF (auth, channel claim, rate limit, SSE) + planner/critic/HITL-with-SLA graph + outbox writes + Docker/ACA | ✅ Built |
 | 12 | [agent-control-plane](projects/12-agent-control-plane) | Governed agent mesh: can we promise this B2B order? | Registry + promotion gate + per-tenant policy + kill switch; A2A (agent card, JSON-RPC tasks, traceparent) fan-out to CRM/SAP/demand agents | ✅ Built |
+| 13 | [insurance-fnol-coverage](projects/13-insurance-fnol-coverage) | FNOL from a scanned packet to an adjuster-approved reserve | OCR confidence gate + edition/jurisdiction temporal RAG ∥ fraud ML tool → HITL within authority; claimant guard | ✅ Built |
 
 ## Architecture: four planes and the shared platform
 
@@ -99,6 +100,7 @@ ladder.
 | [10-supply-chain-multi-agent](projects/10-supply-chain-multi-agent/DOCTRINE.md) | L4 | analytics, erp, suppliers | none (by design) | 4 | 8 | 4 | 17 | 1.00 | n/a | 0.00 | Planner time per replenishment decision (-60% vs manual three-screen process) |
 | [11-customer-care-e2e](projects/11-customer-care-e2e/DOCTRINE.md) | L5 | crm, oms, payments | care-policy (ACL), crm-case-history (per request) (ACL) | 5 | 10 | 5 | 21 | 1.00 | 1.00 | 0.00 | Late-delivery refund containment (>= 70% closed without a human) |
 | [12-agent-control-plane](projects/12-agent-control-plane/DOCTRINE.md) | L4 | analytics, crm, erp | none (by design) | 5 | 8 | 4 | 14 | 1.00 | n/a | 0.00 | Unregistered or unauthorised A2A calls served (0) |
+| [13-insurance-fnol-coverage](projects/13-insurance-fnol-coverage/DOCTRINE.md) | L3 | claims, docintel, fraud_ml, policy_admin | policy-forms (ACL) | 5 | 8 | 5 | 22 | 1.00 | 1.00 | 0.00 | FNOL cycle time to adjuster-ready proposal (< 15 minutes for clean packets) |
 <!-- doctrine-matrix:end -->
 
 Notes on the numbers:
@@ -170,6 +172,7 @@ python projects/02-ticket-triage/run.py
 python projects/01-policy-qa-rag/run.py
 python projects/11-customer-care-e2e/run.py
 python projects/12-agent-control-plane/run.py
+python projects/13-insurance-fnol-coverage/run.py
 ```
 
 ## Using a real LLM (optional)

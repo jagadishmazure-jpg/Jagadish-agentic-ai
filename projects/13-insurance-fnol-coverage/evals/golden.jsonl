@@ -1,0 +1,22 @@
+{"id": "sudden-water-tx-2023-paid", "input": {"doc": "DOC-WATER-TX"}, "expect": {"outcome": "paid", "coverage": "covered", "reserve": 17400.0, "payment": 17400.0, "paid": 17400.0}}
+{"id": "seepage-21d-2023-edition-excluded", "input": {"doc": "DOC-SEEP-TX23"}, "expect": {"outcome": "denied", "coverage": "excluded", "paid": 0}}
+{"id": "seepage-21d-2019-edition-covered", "input": {"doc": "DOC-SEEP-TX19"}, "expect": {"outcome": "paid", "coverage": "covered", "payment": 6700.0}}
+{"id": "mold-sublimit-texas", "input": {"doc": "DOC-MOLD-TX"}, "expect": {"outcome": "paid", "reserve": 15000.0}}
+{"id": "mold-sublimit-california", "input": {"doc": "DOC-MOLD-CA"}, "expect": {"outcome": "paid", "reserve": 16500.0}}
+{"id": "blurry-policy-number-queued", "input": {"doc": "DOC-BLURRY"}, "expect": {"outcome": "queued", "exit": {"node": "intake", "exit": "escalate"}}}
+{"id": "handwritten-amount-queued", "input": {"doc": "DOC-HANDWRITTEN"}, "expect": {"outcome": "queued"}}
+{"id": "high-fraud-band-siu-hold", "input": {"doc": "DOC-FIRE-NEW"}, "expect": {"outcome": "open", "siu": true, "reserve": 60000.0, "payment": 0.0, "paid": 0}}
+{"id": "high-fraud-leaky-model-guarded", "input": {"doc": "DOC-FIRE-NEW", "leaky_model": true}, "expect": {"outcome": "open", "exit": {"node": "finalize", "exit": "degrade"}}}
+{"id": "lapsed-policy-denied-by-adjuster", "input": {"doc": "DOC-LAPSED"}, "expect": {"outcome": "denied", "coverage": "not_in_force", "exit": {"node": "policy", "exit": "escalate"}}}
+{"id": "over-limit-capped", "input": {"doc": "DOC-OVER-LIMIT"}, "expect": {"outcome": "paid", "reserve": 39000.0}}
+{"id": "flood-excluded", "input": {"doc": "DOC-FLOOD"}, "expect": {"outcome": "denied", "coverage": "excluded"}}
+{"id": "unclear-cause-model-classifies-theft", "input": {"doc": "DOC-NO-CAUSE"}, "expect": {"outcome": "paid", "payment": 3200.0}}
+{"id": "unknown-policy-queued", "input": {"doc": "DOC-UNKNOWN-POLICY"}, "expect": {"outcome": "queued", "exit": {"node": "policy", "exit": "escalate"}}}
+{"id": "junior-adjuster-over-authority-referred", "input": {"doc": "DOC-OVER-LIMIT", "review": {"approver": "adj-kim", "decision": "approve"}}, "expect": {"outcome": "open", "paid": 0, "exit": {"node": "human_approval", "exit": "escalate"}}}
+{"id": "non-adjuster-cannot-approve", "input": {"doc": "DOC-WATER-TX", "review": {"approver": "fnol-agent", "decision": "approve"}}, "expect": {"outcome": "open", "paid": 0}}
+{"id": "adjuster-denies-covered-claim", "input": {"doc": "DOC-WATER-TX", "review": {"approver": "adj-kim", "decision": "deny"}}, "expect": {"outcome": "open", "paid": 0}}
+{"id": "hitl-timeout-never-pays", "input": {"doc": "DOC-WATER-TX", "review": {"timeout": true}}, "expect": {"outcome": "open", "paid": 0, "exit": {"node": "human_approval", "exit": "escalate"}}}
+{"id": "fraud-endpoint-down-manual-review", "input": {"doc": "DOC-WATER-TX", "fault": "sor:fraud_ml"}, "expect": {"outcome": "paid", "exit": {"node": "fraud", "exit": "degrade"}}}
+{"id": "policy-wording-unavailable", "input": {"doc": "DOC-WATER-TX", "fault": "retrieval"}, "expect": {"outcome": "open", "coverage": "unknown", "paid": 0}}
+{"id": "claims-system-down-honest", "input": {"doc": "DOC-WATER-TX", "fault": "sor:claims"}, "expect": {"outcome": "open", "paid": 0, "exit": {"node": "finalize", "exit": "degrade"}}}
+{"id": "injected-packet-description-queued", "input": {"doc": "DOC-POISON", "poison": true}, "expect": {"outcome": "queued"}}

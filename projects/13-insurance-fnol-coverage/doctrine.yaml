@@ -1,0 +1,132 @@
+project: 13-insurance-fnol-coverage
+title: Insurance FNOL and coverage - scanned packet to adjuster-approved reserve
+owner: Jagadish Meduri
+industry: Insurance (property & casualty claims)
+summary: >-
+  First notice of loss from a scanned packet. A Document-Intelligence-style extractor returns
+  field-value pairs with confidence, and required fields below the floor go to a manual
+  indexing queue instead of being guessed. The policy comes from policy admin over MCP.
+  Coverage is decided by deterministic rules that must be grounded in the policy form wording
+  retrieved as of the policy's form edition and for its state (amendatory endorsements). A
+  deployed fraud model is called as an MCP tool, so the LLM never computes fraud. The proposal
+  goes to an adjuster, within authority limits, before any reserve or payment. Claimant
+  messages never mention internal review.
+maturity:
+  level: 3
+  rationale: agent proposes, adjuster disposes - extraction, coverage research and the proposal are automated, every reserve and payment needs an adjuster within authority limits
+  next_rung: straight-through processing for low-severity, low-band, clearly-covered claims under a per-state limit once leakage and reopen-rate KPIs hold for two quarters
+kpis:
+  - {name: FNOL cycle time to adjuster-ready proposal, target: "< 15 minutes for clean packets", measure: "packet received -> interrupt raised timestamps"}
+  - {name: Coverage decision accuracy, target: ">= 98% agreement with adjuster disposition", measure: "proposal recommendation vs adjuster decision, sampled QA"}
+  - {name: Internal-review leakage to claimants, target: "0 messages", measure: "claimant channel scan for fraud/SIU/investigation language"}
+  - {name: Low-confidence packets guessed, target: "0", measure: "queued vs processed packets with any required field < 0.85 confidence"}
+roi: >-
+  Adjusters spend a large share of FNOL time keying packets and looking up the right form
+  edition and state endorsement. Automating extraction and coverage research moves that time
+  to judgement, and deterministic, cited coverage decisions reduce leakage from applying the
+  wrong edition. Payments stay adjuster-approved, so the upside comes from cycle time and
+  consistency, not from removing controls. Costs are OCR and model usage and the integration
+  of policy admin, claims and the fraud endpoint.
+planes:
+  experience: claimant portal/email intake of scanned packets; adjuster workbench receives the interrupt payload (proposal, citations, internal fraud band)
+  agent: LangGraph FNOL graph (intake -> policy -> [coverage || fraud] -> adjudicate -> human_approval -> finalize | queue) with checkpoints and interrupt()
+  knowledge: policy-forms corpus on the shared ContextBuilder - edition validity (as-of the form edition date), state endorsements scoped by jurisdiction, SIU guide ACL'd to siu; deterministic rules must cite retrieved provisions
+  data: Document Intelligence (mock), policy admin, fraud ML endpoint and claims system via MCP servers behind reader/writer gateways
+systems_of_record:
+  - {name: Document Intelligence (scanned packets), kind: document_store, contract: "docintel.analyze_document(document_id) -> fields{value, confidence}", access: read}
+  - {name: Policy admin, kind: mcp, contract: "policy_admin.get_policy(policy_number) -> form, edition, jurisdiction, term, limit, deductible", access: read}
+  - {name: Fraud ML endpoint, kind: api, contract: "fraud_ml.score_claim(...) -> score, band, reasons, model_version (MCP-wrapped online endpoint)", access: read}
+  - {name: Claims system, kind: mcp, contract: "claims.open_claim, set_reserve, issue_payment, queue_document (writes, idempotent, approver required for money)", access: write}
+knowledge:
+  corpora:
+    - name: policy-forms
+      owner: Jagadish Meduri (product forms)
+      acl: "base HO3 forms everyone; state amendatory endorsements scoped to their jurisdiction; SIU-GUIDE-INT siu only"
+      temporal: "HO3 2019 edition (2019-06-01..2022-12-31) and 2023 edition; retrieved as-of the edition date on the policy, not the loss date"
+      refresh_sla: on form filing approval (new edition = new documents with validity; old editions kept)
+      sensitivity: internal
+  notes: The claim packet itself is per-request evidence (sanitised, never indexed).
+contracts:
+  mcp:
+    - "docintel.analyze_document(document_id)"
+    - "policy_admin.get_policy(policy_number)"
+    - "fraud_ml.score_claim(policy_number, loss_date, reported_date, amount)"
+    - "claims.open_claim(fnol, idempotency_key, dry_run)"
+    - "claims.set_reserve(claim_id, amount, approver, idempotency_key, dry_run)"
+    - "claims.issue_payment(claim_id, amount, approver, idempotency_key, dry_run)"
+    - "claims.queue_document(document_id, reason, idempotency_key, dry_run)"
+  a2a: []
+  notes: SIU referral is an internal flag on the adjuster payload today; an SIU case agent over the shared A2A contract is the next peer.
+identities:
+  - {identity: mi-fnol-reader, allow: [docintel.analyze_document, policy_admin.get_policy, fraud_ml.score_claim]}
+  - {identity: mi-claims-writer, allow: [claims.open_claim, claims.set_reserve, claims.issue_payment, claims.queue_document]}
+stop_conditions:
+  - any required field (policy number, loss date, amount, description) below 0.85 OCR confidence -> manual indexing queue, nothing guessed
+  - instruction-like text in the packet -> queue for a human
+  - reserve and payment only after an adjuster approves, within that adjuster's authority; the agent identity is never an approver
+  - high fraud band -> SIU referral, payment held; the claimant hears only that an adjuster is handling it
+  - HITL timeout leaves the claim with the adjuster queue; it never pays
+graph: fnol.graph:build_graph
+failure_playbook:
+  - node: intake
+    success: all required fields >= 0.85 confidence; cause of loss known (field or model)
+    retry: gateway backoff on extraction
+    compensate: n/a (read-only)
+    degrade: model down -> keyword cause classifier; extractor down -> queue
+    escalate: low confidence, missing packet or injected text -> manual indexing queue
+  - node: policy
+    success: policy found and in force on the loss date
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: n/a
+    escalate: policy admin down or policy unknown -> queue; not in force -> adjuster decides (denial proposal)
+  - node: coverage
+    success: rule decision whose provisions were retrieved for this edition and state, with citations
+    retry: n/a (idempotent search, one attempt)
+    compensate: n/a
+    degrade: retrieval down or provision not retrieved -> coverage unknown, no payment proposed
+    escalate: n/a
+  - node: fraud
+    success: model score, band and reasons from the ML endpoint
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: endpoint down -> no score, adjuster told to review manually
+    escalate: high band -> SIU referral, payment held
+  - node: adjudicate
+    success: proposal (reserve, payment, citations) + adjuster note
+    retry: fallback deployment
+    compensate: n/a (no side effects)
+    degrade: models down -> template note
+    escalate: n/a (always goes to the adjuster)
+  - node: human_approval
+    success: adjuster approves or denies within authority
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: not an adjuster / over authority -> referred; SLA timeout -> stays queued, never pays
+  - node: finalize
+    success: claim opened; reserve and payment written with approver + idempotency keys; claimant message passes the guard
+    retry: "gateway backoff; replays dedupe on fnol:/reserve:/pay: keys"
+    compensate: "reserve adjustment / payment void via the claims system (adjuster-initiated)"
+    degrade: claims system down -> honest 'adjuster handling' message with FNOL reference; leaky draft -> template
+    escalate: n/a
+  - node: queue
+    success: packet in the manual indexing queue with a reference
+    retry: gateway backoff
+    compensate: n/a
+    degrade: claims system down -> reference only
+    escalate: n/a (the queue is the escalation)
+chaos:
+  - {fault: model, node: intake, exit: degrade, invariant: "keyword classifier still finds theft; adjuster-approved payment unchanged"}
+  - {fault: retrieval, node: coverage, exit: degrade, invariant: "coverage unknown; nothing paid"}
+  - {fault: "sor:fraud_ml", node: fraud, exit: degrade, invariant: "no score; adjuster note says review manually"}
+  - {fault: "sor:policy_admin", node: policy, exit: escalate, invariant: "packet queued; nothing paid"}
+  - {fault: jailbreak, node: intake, exit: escalate, invariant: "injected packet text queued for a human; nothing paid; not echoed"}
+eval:
+  golden: evals/golden.jsonl
+  suite: fnol.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.95"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"
