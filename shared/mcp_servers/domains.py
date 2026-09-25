@@ -234,7 +234,7 @@ def build_erp_server(backend: Any) -> SorServer:
 
     if _has(backend, "submit_purchase_order"):
 
-        @srv.write
+        @srv.write(dedupe=False)  # backend dedupes on the key itself
         def submit_purchase_order(
             draft_id: str, idempotency_key: str, dry_run: bool = True
         ) -> Json:
@@ -251,7 +251,7 @@ def build_payments_server(backend: Any) -> SorServer:
     srv = SorServer("payments", "Payments and receivables ledger.", "Payments")
     if _has(backend, "issue_refund"):
 
-        @srv.write
+        @srv.write(dedupe=False)  # backend dedupes on the key itself
         def issue_refund(
             order_id: str, amount: float, idempotency_key: str, dry_run: bool = True
         ) -> Json:
@@ -269,7 +269,7 @@ def build_payments_server(backend: Any) -> SorServer:
 
     if _has(backend, "create_payment_plan"):
 
-        @srv.write
+        @srv.write(dedupe=False)  # backend dedupes on the key itself
         def create_payment_plan(
             account_id: str,
             plan: Json,

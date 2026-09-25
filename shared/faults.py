@@ -8,11 +8,13 @@ dependency without monkeypatching project code:
 * ``sor`` / ``sor:<server>`` / ``sor:<server>.<tool>`` - MCP systems of record
 
 ``inject(name, times=n)`` fails only the next *n* checks (a transient fault). Leave ``times``
-unset for a hard outage.
+unset for a hard outage. Demos accept ``CHAOS_FAULTS="sor:payments,model"`` (``name*n`` for
+transient) so any ``run.py`` can be chaos-tested from the shell.
 """
 
 from __future__ import annotations
 
+import os
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -64,3 +66,8 @@ def fault(name: str, times: int | None = None) -> Iterator[None]:
         yield
     finally:
         clear(name)
+
+
+for _spec in filter(None, (x.strip() for x in os.getenv("CHAOS_FAULTS", "").split(","))):
+    _name, _, _times = _spec.partition("*")
+    inject(_name, int(_times) if _times else None)

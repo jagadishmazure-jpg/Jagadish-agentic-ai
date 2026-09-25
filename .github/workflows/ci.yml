@@ -26,7 +26,15 @@ jobs:
         env:
           LLM_PROVIDER: mock
         run: uv run pytest
-      - name: Eval gate (08-contract-review precision/recall)
+      - name: Eval gate - all projects (golden sets, thresholds from doctrine.yaml)
+        env:
+          LLM_PROVIDER: mock
+        run: uv run python -m evals --no-write
+      - name: Eval gate - contract review precision/recall
         env:
           LLM_PROVIDER: mock
         run: uv run python projects/08-contract-review/evals/run_eval.py --min-precision 0.8 --min-recall 0.8
+      - name: Doctrine promotion gate (cards complete, five-exit coverage, scores, DOCTRINE.md fresh)
+        env:
+          LLM_PROVIDER: mock
+        run: uv run python -m shared.doctrine validate

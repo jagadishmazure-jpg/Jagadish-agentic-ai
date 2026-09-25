@@ -52,13 +52,15 @@ class SorServer:
         self._idem: dict[tuple[str, str], Any] = {}
         self._lock = threading.Lock()
 
-    def _wrap(self, fn: Callable[..., Any], tool: str, write: bool) -> Callable[..., Any]:
+    def _wrap(
+        self, fn: Callable[..., Any], tool: str, write: bool, dedupe: bool = True
+    ) -> Callable[..., Any]:
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 if faults.active(*faults.scopes("sor", self.name, tool)):
                     raise SorUnavailableError(f"{self.system} unavailable (503)")
-                if write and not kwargs.get("dry_run", True):
+                if write and dedupe and not kwargs.get("dry_run", True):
                     key = (tool, str(kwargs["idempotency_key"]))
                     with self._lock:
                         if key in self._idem:
@@ -81,7 +83,12 @@ class SorServer:
         return wrapper
 
     def _register(
-        self, fn: Callable[..., Any] | None, write: bool, name: str | None, description: str | None
+        self,
+        fn: Callable[..., Any] | None,
+        write: bool,
+        name: str | None,
+        description: str | None,
+        dedupe: bool = True,
     ):
         def deco(f: Callable[..., Any]) -> Callable[..., Any]:
             tool = name or f.__name__
@@ -95,7 +102,7 @@ class SorServer:
             desc = description or (inspect.getdoc(f) or tool)
             if write:
                 desc = f"[WRITE: idempotent, dry_run by default] {desc}"
-            self.mcp.add_tool(self._wrap(f, tool, write), name=tool, description=desc)
+            self.mcp.add_tool(self._wrap(f, tool, write, dedupe), name=tool, description=desc)
             return f
 
         return deco(fn) if fn else deco
@@ -115,8 +122,11 @@ class SorServer:
         *,
         name: str | None = None,
         description: str | None = None,
+        dedupe: bool = True,
     ):
-        return self._register(fn, True, name, description)
+        """``dedupe=False`` when the backend owns idempotency (e.g. a payment provider that
+        dedupes on the key itself) - the key is still required and passed through."""
+        return self._register(fn, True, name, description, dedupe)
 
     def run_stdio(self) -> None:  # pragma: no cover - exercised via subprocess test
         self.mcp.run("stdio")
