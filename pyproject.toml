@@ -10,6 +10,7 @@ dependencies = [
     "langgraph>=1.2.12,<2",
     "langchain-core>=1.6.5,<2",
     "pydantic>=2.13.5,<3",
+    "langchain>=1.4.2,<2",
 ]
 
 [project.optional-dependencies]
@@ -33,7 +34,7 @@ addopts = "-q --import-mode=importlib"
 testpaths = ["shared", "projects"]
 # Project folders have hyphens (e.g. 03-refund-agent), so each project's
 # importable package lives one level down and is put on the path here.
-pythonpath = [".", "projects/03-refund-agent"]
+pythonpath = [".", "projects/03-refund-agent", "projects/10-supply-chain-multi-agent"]
 
 [tool.ruff]
 line-length = 100
@@ -45,4 +46,4 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 ignore = ["RUF001"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["shared", "refund_agent"]
+known-first-party = ["shared", "refund_agent", "supply_chain"]

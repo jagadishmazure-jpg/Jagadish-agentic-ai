@@ -24,7 +24,7 @@ tests, and a README covering design trade-offs and interview talking points.
 | 07 | [rfp-response](projects/07-rfp-response) | Draft RFP / security questionnaire answers | Plan-and-execute with subgraphs | 📝 Planned |
 | 08 | [contract-review](projects/08-contract-review) | Playbook-based contract risk review | Critic / reviser loop with citations | 📝 Planned |
 | 09 | [collections-agent](projects/09-collections-agent) | Overdue-invoice outreach and negotiation | Long-running durable workflow + guardrails | 📝 Planned |
-| 10 | [supply-chain-multi-agent](projects/10-supply-chain-multi-agent) | Disruption response across inventory, sourcing, and logistics | Supervisor multi-agent with handoffs | 📝 Planned |
+| 10 | [supply-chain-multi-agent](projects/10-supply-chain-multi-agent) | Replenishment: forecast, stock, sourcing, approved PO | Supervisor multi-agent + parallel `Send` + critic loop + HITL | ✅ Built |
 
 ## Repo layout
 
@@ -61,6 +61,7 @@ pytest                     # all projects, offline, mock LLM
 
 ```bash
 python projects/03-refund-agent/run.py
+python projects/10-supply-chain-multi-agent/run.py
 ```
 
 ## Using a real LLM (optional)

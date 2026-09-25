@@ -21,9 +21,10 @@ from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from pydantic import Field
 
 Provider = Literal["mock", "azure", "openai"]
-Responder = Callable[[Sequence[BaseMessage]], str]
+Responder = Callable[[Sequence[BaseMessage]], "str | AIMessage"]
 
 AZURE_VARS = ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT")
 
@@ -39,10 +40,12 @@ class MockChatModel(BaseChatModel):
 
     Each project passes its own rule-based responder so demos and tests are
     reproducible without network access, while the calling code is identical to
-    what runs against a real model.
+    what runs against a real model. A responder returns either text or a full
+    ``AIMessage`` (e.g. one carrying ``tool_calls`` for agent loops).
     """
 
     responder: Responder = _default_responder
+    bound_tools: list[str] = Field(default_factory=list)
 
     @property
     def _llm_type(self) -> str:
@@ -55,8 +58,18 @@ class MockChatModel(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
-        content = self.responder(messages)
-        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+        out = self.responder(messages)
+        message = out if isinstance(out, AIMessage) else AIMessage(content=out)
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+    def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> MockChatModel:
+        """Support tool-calling agents (e.g. ``create_react_agent``).
+
+        The responder decides which tool calls to emit by returning an ``AIMessage``
+        with ``tool_calls``; bound tool names are recorded for introspection.
+        """
+        names = [getattr(t, "name", None) or getattr(t, "__name__", str(t)) for t in tools]
+        return self.model_copy(update={"bound_tools": names})
 
 
 def resolve_provider(env: dict[str, str] | None = None) -> Provider:

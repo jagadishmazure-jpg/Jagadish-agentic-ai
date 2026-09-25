@@ -32,3 +32,25 @@ def test_mock_is_deterministic_and_uses_responder():
     out1 = llm.invoke([HumanMessage(content="hi")]).content
     out2 = llm.invoke([HumanMessage(content="hi")]).content
     assert out1 == out2 == "ok:hi"
+
+
+def test_mock_supports_tool_calling_agents():
+    from langchain.agents import create_agent
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langchain_core.tools import tool
+
+    @tool
+    def add(a: int, b: int) -> int:
+        """Add two ints."""
+        return a + b
+
+    def responder(msgs):
+        if not any(isinstance(m, ToolMessage) for m in msgs):
+            return AIMessage("", tool_calls=[{"name": "add", "args": {"a": 2, "b": 3}, "id": "1"}])
+        return AIMessage(f"sum={msgs[-1].content}")
+
+    llm = MockChatModel(responder=responder)
+    assert llm.bind_tools([add]).bound_tools == ["add"]
+    agent = create_agent(llm, [add])
+    out = agent.invoke({"messages": [HumanMessage("2+3?")]})
+    assert out["messages"][-1].content == "sum=5"

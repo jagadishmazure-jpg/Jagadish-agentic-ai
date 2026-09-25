@@ -1,0 +1,35 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	supervisor(supervisor)
+	demand_agent(demand_agent)
+	inventory_agent(inventory_agent)
+	supplier_agent(supplier_agent)
+	reviewer(reviewer)
+	human_approval(human_approval)
+	submit_po(submit_po)
+	finalize(finalize)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> supervisor;
+	demand_agent --> supervisor;
+	human_approval -.-> finalize;
+	human_approval -.-> submit_po;
+	inventory_agent --> supervisor;
+	reviewer -.-> finalize;
+	reviewer -.-> human_approval;
+	reviewer -.-> supplier_agent;
+	submit_po --> finalize;
+	supervisor -.-> demand_agent;
+	supervisor -.-> finalize;
+	supervisor -.-> inventory_agent;
+	supervisor -.-> reviewer;
+	supervisor -.-> supplier_agent;
+	supplier_agent --> supervisor;
+	finalize --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
