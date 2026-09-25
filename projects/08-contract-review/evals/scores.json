@@ -1,0 +1,24 @@
+{
+  "project": "08-contract-review",
+  "n": 12,
+  "metrics": {
+    "task_success": 0.75,
+    "groundedness": 1.0,
+    "policy_violation_rate": 0.0,
+    "tool_error_rate": 0.0,
+    "cost_per_task": 0.000326
+  },
+  "thresholds": {
+    "task_success": ">=0.7",
+    "groundedness": ">=0.95",
+    "policy_violation_rate": "<=0",
+    "cost_per_task": "<=0.003"
+  },
+  "passed": true,
+  "violations": [],
+  "failed_cases": [
+    "EV2-balanced",
+    "EV3-evergreen",
+    "EV8-short-payment"
+  ]
+}

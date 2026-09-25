@@ -88,3 +88,30 @@ pytest projects/08-contract-review
 5. **Production path.** Word add-in or CLM integration (Ironclad, Icertis), with Azure AI
    Document Intelligence for PDFs. An LLM-as-judge could supplement the rule evaluator for
    nuance, and lawyer accept/reject data feeds the eval set.
+
+## Doctrine compliance
+
+This agent meets the portfolio's production-readiness doctrine. The full card is in
+[`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml).
+
+What the doctrine upgrade changed:
+
+- **Playbook from the shared context builder.** The playbook text the reviewer reads is now
+  retrieved per clause from the shared `ContextBuilder` (`contract_review/playbook.py`).
+  Senior-counsel negotiation fallbacks are ACL-trimmed, so a concession can never leak into a
+  redline. The rules engine and guardrails stay in code as the deterministic control.
+- **Degrade exits.** If every model is down, the graph uses the keyword classifier and a
+  rules-only review, where the evaluator floor supplies the findings and approved redlines.
+  If playbook search is down, it also runs rules-only. Suspected injection in the contract
+  text is neutralised and forces legal review.
+- **Golden-set convention.** The labelled set now lives in `evals/golden.jsonl` (12 cases).
+  `run_eval.py` still reports precision and recall on the original six-contract subset.
+  - `python -m evals` scores exact per-contract matches.
+  - Three cases are known-hard, so task success is **0.75**. That is honest, not perfect,
+    and the gate is set at 0.7.
+
+```bash
+python -m evals --project 08
+python projects/08-contract-review/evals/run_eval.py
+pytest projects/08-contract-review/tests/test_chaos.py
+```

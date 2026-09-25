@@ -3,6 +3,13 @@
 segment -> classify_clauses 🤖 -> review (optimizer 🤖) -> evaluate (playbook evaluator)
     feedback & iterations < 3 -> review (revise with feedback)
     clean or budget spent     -> guardrails -> score_and_route -> END
+
+Doctrine wiring: the playbook text the reviewer reads is retrieved per clause from the shared
+ContextBuilder (ACL: senior-counsel fallbacks never reach the review agent); the rules engine
++ guardrails remain the deterministic control. Model outage -> keyword classifier and a
+rules-only review (the evaluator floor supplies findings and approved redlines); playbook
+search outage -> rules-only review; contract text is sanitised and suspected injection forces
+legal review. Exits go to ``state["exits"]``.
 """
 
 from __future__ import annotations
@@ -19,7 +26,19 @@ from pydantic import BaseModel, Field, ValidationError
 
 from contract_review import llm as prompts
 from contract_review.library import DISCLAIMER, LIBRARY, SEVERITY_RANK
-from contract_review.rules import evaluate, expected_findings, score, segment, violates_guardrail
+from contract_review.playbook import builder as playbook_builder
+from contract_review.playbook import playbook_context
+from contract_review.rules import (
+    evaluate,
+    expected_findings,
+    keyword_type,
+    score,
+    segment,
+    violates_guardrail,
+)
+from shared.context import ContextBuilder, RetrievalError, looks_like_injection, sanitize
+from shared.observability import install
+from shared.resilience import ModelUnavailableError, exit_record, with_fallback
 
 MAX_ITERATIONS = 3  # 1 draft + up to 2 revisions
 
@@ -44,6 +63,8 @@ class ReviewReport(BaseModel):
     evaluation_passed: bool
     unresolved_feedback: list[str] = Field(default_factory=list)
     guardrail_blocks: list[str] = Field(default_factory=list)
+    playbook_sources: list[str] = Field(default_factory=list)
+    injection_suspected: bool = False
     disclaimer: str = DISCLAIMER
 
 
@@ -57,44 +78,93 @@ class ReviewState(TypedDict, total=False):
     history: Annotated[list[dict[str, Any]], operator.add]
     guardrail_blocks: list[str]
     report: dict[str, Any]
+    injection: bool
+    playbook_sources: list[str]
+    exits: Annotated[list[dict[str, str]], operator.add]
 
 
-def build_graph(llm: BaseChatModel | None = None):
+def build_graph(llm: BaseChatModel | None = None, kb: ContextBuilder | None = None):
+    install()
     if llm is None:
         from shared.llm import get_llm
 
         llm = get_llm(mock_responder=prompts.mock_responder)
+    llm = with_fallback(llm)
+    kb = kb or playbook_builder()
 
     def ask(system: str, user: str) -> str:
         return str(llm.invoke([SystemMessage(system), HumanMessage(user)]).content).strip()
 
     def segment_node(state: ReviewState) -> dict[str, Any]:
-        return {"clauses": segment(state["text"]), "iterations": 0, "feedback": []}
+        clauses = segment(state["text"])
+        injection = any(looks_like_injection(c["text"]) for c in clauses)
+        exits = []
+        if injection:  # contract text is untrusted: neutralise before any model sees it
+            clauses = [{**c, "text": sanitize(c["text"], redact_pii=False).text} for c in clauses]
+            exits = [exit_record("segment", "escalate", "suspected prompt injection -> legal")]
+        return {
+            "clauses": clauses,
+            "iterations": 0,
+            "feedback": [],
+            "injection": injection,
+            "exits": exits,
+        }
 
     def classify_clauses(state: ReviewState) -> dict[str, Any]:
-        out = []
+        out, degraded = [], False
         for c in state["clauses"]:
-            label = ask(prompts.CLASSIFY_SYSTEM, f"{c['heading']}\n{c['text']}").lower()
-            ctype = next((t for t in prompts.TYPES if t in label), "other")
+            try:
+                label = ask(prompts.CLASSIFY_SYSTEM, f"{c['heading']}\n{c['text']}").lower()
+                ctype = next((t for t in prompts.TYPES if t in label), "other")
+            except ModelUnavailableError:
+                ctype, degraded = keyword_type(c["heading"], c["text"]), True
             out.append({**c, "type": ctype})
-        return {"clauses": out, "expected": expected_findings(out, state["text"])}
+        exits = (
+            [exit_record("classify_clauses", "degrade", "model unavailable: keyword classifier")]
+            if degraded
+            else []
+        )
+        return {
+            "clauses": out,
+            "expected": expected_findings(out, state["text"]),
+            "exits": exits,
+        }
 
     def review(state: ReviewState) -> dict[str, Any]:
+        n = state["iterations"] + 1
+        try:
+            playbook = playbook_context(kb, state["clauses"])
+        except RetrievalError as exc:
+            return {
+                "findings": [],
+                "iterations": MAX_ITERATIONS,
+                "exits": [exit_record("review", "degrade", f"{exc}: rules-only review")],
+            }
         payload = {
             "clauses": state["clauses"],
-            "playbook": {
-                t: {"standard": s["standard"], "redline": s["redline"]} for t, s in LIBRARY.items()
-            },
+            "playbook": playbook,
             "previous_findings": state.get("findings", []),
             "feedback": state["feedback"],
         }
-        raw = ask(prompts.REVIEW_SYSTEM, json.dumps(payload))
+        try:
+            raw = ask(prompts.REVIEW_SYSTEM, json.dumps(payload))
+        except ModelUnavailableError:
+            return {
+                "findings": [],
+                "iterations": MAX_ITERATIONS,  # no point looping without a model
+                "playbook_sources": sorted(p["id"] for p in playbook.values()),
+                "exits": [exit_record("review", "degrade", "model unavailable: rules-only")],
+            }
         try:
             data = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
             findings = [Finding(**f).model_dump() for f in data.get("findings", [])]
         except (AttributeError, json.JSONDecodeError, ValidationError, TypeError):
             findings = []
-        return {"findings": findings, "iterations": state["iterations"] + 1}
+        return {
+            "findings": findings,
+            "iterations": n,
+            "playbook_sources": sorted(p["id"] for p in playbook.values()),
+        }
 
     def evaluate_node(state: ReviewState) -> dict[str, Any]:
         fb = evaluate(state["findings"], state["clauses"], state["expected"])
@@ -148,6 +218,7 @@ def build_graph(llm: BaseChatModel | None = None):
         findings = sorted(state["findings"], key=lambda f: -SEVERITY_RANK[f["severity"]])
         s, tier = score(findings)
         critical = any(f["severity"] in ("critical", "high") for f in findings)
+        critical = critical or bool(state.get("injection"))
         title = state["text"].strip().splitlines()[0]
         report = ReviewReport(
             title=title,
@@ -159,8 +230,13 @@ def build_graph(llm: BaseChatModel | None = None):
             evaluation_passed=not state["feedback"],
             unresolved_feedback=state["feedback"],
             guardrail_blocks=state.get("guardrail_blocks", []),
+            playbook_sources=state.get("playbook_sources", []),
+            injection_suspected=bool(state.get("injection")),
         )
-        return {"report": report.model_dump()}
+        exits = []
+        if report.route == "legal_review_required":
+            exits.append(exit_record("score_and_route", "escalate", "legal review required"))
+        return {"report": report.model_dump(), "exits": exits}
 
     g = StateGraph(ReviewState)
     g.add_node("segment", segment_node)
@@ -176,4 +252,6 @@ def build_graph(llm: BaseChatModel | None = None):
     g.add_conditional_edges("evaluate", after_eval, ["review", "guardrails"])
     g.add_edge("guardrails", "score_and_route")
     g.add_edge("score_and_route", END)
-    return g.compile()
+    compiled = g.compile(name="contract-review")
+    compiled.kb = kb
+    return compiled

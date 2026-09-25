@@ -1,0 +1,95 @@
+project: 08-contract-review
+title: Contract review against the legal playbook (evaluator-optimizer)
+owner: Jagadish Meduri
+industry: Legal operations / procurement (any enterprise buying or selling services)
+summary: >-
+  Inbound third-party contracts are segmented and classified by clause. Each clause is reviewed
+  against the legal playbook and checked by a deterministic evaluator; guardrails enforce the
+  playbook floor. The contract is then routed to legal or the business owner with a risk score
+  and approved redlines.
+maturity:
+  level: 3
+  rationale: LLM reviewer bounded by a deterministic evaluator + guardrails, governed playbook retrieval; advisory only (lawyer approves)
+  next_rung: MCP write of the review into the CLM system (HITL) and A2A hand-off to a negotiation-drafting agent
+kpis:
+  - {name: First-pass review time, target: "-60% vs manual", measure: "contract received -> first-pass review delivered"}
+  - {name: Risk recall on labelled set, target: ">= 0.9 (precision >= 0.8)", measure: "run_eval.py precision / recall"}
+  - {name: Unsafe redlines, target: "0", measure: "guardrail blocks reaching a sent redline"}
+roi: >-
+  Value is lawyer hours saved on first-pass review of low-risk paper, plus faster deal cycles
+  because low-risk paper goes straight to the business owner. Subtract token cost and the review
+  time on escalations. Missed risks are the main cost, which is why recall is gated in CI and a
+  lawyer approves every redline.
+planes:
+  experience: legal intake queue / CLM sidebar; report with findings, evidence quotes, redlines, route and disclaimer
+  agent: LangGraph evaluator-optimizer (segment -> classify -> review <-> evaluate x3 -> guardrails -> score_and_route)
+  knowledge: legal-playbook knowledge product via shared ContextBuilder (per-clause retrieval, ACL on senior fallbacks)
+  data: none at runtime (contract text is the input; CLM write-back is the next rung)
+systems_of_record:
+  - {name: Legal playbook repository, kind: document_store, contract: "legal-playbook corpus (standard + approved redline per clause type; fallbacks senior-only)", access: read}
+knowledge:
+  corpora:
+    - name: legal-playbook
+      owner: Jagadish Meduri (legal operations)
+      acl: "legal-ops for standard positions; negotiation fallbacks legal-senior only (trimmed before ranking)"
+      temporal: "current approved edition only; playbook changes are versioned and re-evaluated in CI"
+      refresh_sla: on playbook approval
+      sensitivity: confidential (negotiation positions)
+contracts:
+  mcp: []
+  a2a: []
+  notes: Advisory agent with no writes. The rules engine (red flags, required terms, prohibited redlines) is code and acts as the control; the model only drafts within it.
+stop_conditions:
+  - at most 3 review iterations (1 draft + 2 revisions), then guardrails enforce the floor
+  - prohibited redline patterns are always replaced with the approved redline
+  - any critical/high finding or suspected injection -> legal review
+graph: contract_review.graph:build_graph
+failure_playbook:
+  - node: segment
+    success: numbered clauses extracted
+    retry: n/a (deterministic)
+    compensate: n/a
+    degrade: instruction-like text neutralised before any model call
+    escalate: suspected prompt injection -> legal review route
+  - node: classify_clauses
+    success: model labels each clause type
+    retry: fallback deployment
+    compensate: n/a
+    degrade: keyword classifier when models are down
+    escalate: n/a
+  - node: review
+    success: findings drafted against retrieved playbook entries
+    retry: evaluator feedback loop (max 3); fallback deployment
+    compensate: n/a
+    degrade: models or playbook search down -> rules-only review (evaluator floor supplies findings + approved redlines)
+    escalate: n/a
+  - node: evaluate
+    success: draft matches the playbook floor
+    retry: sends feedback to review
+    compensate: n/a
+    degrade: n/a
+    escalate: unresolved feedback carried into the report
+  - node: guardrails
+    success: floor enforced; no prohibited redline
+    retry: n/a
+    compensate: prohibited or incomplete redlines replaced with approved language
+    degrade: n/a
+    escalate: n/a
+  - node: score_and_route
+    success: risk score + route with disclaimer
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: legal_review_required for critical/high or injection
+chaos:
+  - {fault: model, node: review, exit: degrade, invariant: "rules-only review still flags liability, indemnity and termination and routes to legal"}
+  - {fault: retrieval, node: review, exit: degrade, invariant: "playbook search down -> rules-only review with the same floor and route"}
+  - {fault: jailbreak, node: segment, exit: escalate, invariant: "injected clause neutralised, injection flagged, routed to legal"}
+eval:
+  golden: evals/golden.jsonl
+  suite: contract_review.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.7"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.003"
