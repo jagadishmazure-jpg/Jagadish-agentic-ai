@@ -99,3 +99,29 @@ The demo covers four cases:
 5. **Why BM25 first.** Policy questions are keyword-heavy (MFA, PTO, Concur), and lexical search
    is transparent and free. Embeddings go behind an interface and get added when the evals show
    a recall gap, typically as a hybrid with reranking.
+
+## Doctrine compliance
+
+This agent meets the portfolio's production-readiness doctrine. The full card is in
+[`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml).
+
+What the doctrine upgrade changed:
+
+- **Shared context builder.** The default retriever is now the shared `ContextBuilder`
+  (`shared/context`): hybrid BM25 + offline vectors fused with RRF plus a coverage rerank, with
+  the same citable chunk IDs as before. The old `BM25Retriever` / `EmbeddingRetriever` still
+  plug in through the `Retriever` protocol.
+- **ACL + temporal retrieval.** Pass `{"principal": {"id", "groups"}, "as_of": "YYYY-MM-DD"}`
+  in the input. Chunks the principal may not see (for example `HR-COMP` pay bands, which are
+  hr-only) are dropped **before ranking**, and the superseded 2025 stipend edition answers
+  questions dated in 2025.
+- **Degrade exits.** If every model is down, the graph uses a lexical rewrite, a lexical
+  grader and an extractive cited answer. If search is down, it takes the honest
+  insufficient-evidence exit and never answers from model memory. Injected spans in
+  retrieved text are neutralised and recorded as a `retrieve → degrade` exit.
+- **Tracing and a fallback model.** OTel spans and a primary → fallback model chain.
+
+```bash
+python -m evals --project 01                          # 13 golden cases incl. ACL, temporal, injection
+pytest projects/01-policy-qa-rag/tests/test_chaos.py  # kill model / search, poison a chunk
+```

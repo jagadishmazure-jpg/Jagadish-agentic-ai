@@ -1,0 +1,106 @@
+project: 01-policy-qa-rag
+title: HR/IT policy Q&A (corrective RAG)
+owner: Jagadish Meduri
+industry: Cross-industry (employee services / internal knowledge)
+summary: >-
+  Employees get cited, policy-true answers from the HR/IT corpus they are allowed to see, as
+  of the date that matters - or an honest "insufficient evidence" with a human contact.
+maturity:
+  level: 4
+  rationale: lakehouse-grade knowledge + LLM with forced citations and a groundedness critic; read-only, no writes
+  next_rung: add a ticket-creation write tool (HITL) for unanswered questions once groundedness stays >= 0.95 on a 100-question set
+kpis:
+  - {name: Deflection of policy questions, target: ">= 40% of HR/IT policy tickets", measure: "answered threads with no ticket filed within 3 days"}
+  - {name: Groundedness, target: ">= 0.95", measure: "citation coverage on the golden set + weekly sampled production answers"}
+  - {name: ACL leakage, target: "0 incidents", measure: "restricted-doc canary questions asked as non-privileged principals"}
+roi: >-
+  Value is HR/IT tickets deflected (fully loaded service-desk cost per ticket) plus employee
+  time saved searching, minus index and token cost and knowledge-owner curation time. The
+  honest insufficient-evidence exit prevents second contacts and wrong-policy escalations,
+  which are subtracted from value rather than hidden.
+planes:
+  experience: Teams / intranet chat; Entra groups passed as the principal; answers cite chunk IDs the UI links to source documents
+  agent: LangGraph corrective-RAG graph (rewrite -> retrieve -> grade -> bounded retry -> pack -> answer -> groundedness critic)
+  knowledge: hr-it-policies knowledge product via shared ContextBuilder - hybrid BM25 + vector (RRF), heading-level chunks, ACL trim, temporal editions, sanitizer, budget packer
+  data: none at runtime - policy documents are the system of record for this domain (HRIS facts would come via an MCP semantic tool in the next rung)
+systems_of_record:
+  - {name: HR/IT policy repository (SharePoint-like), kind: document_store, contract: "hr-it-policies corpus (versioned documents -> chunks with ACL + validity)", access: read}
+knowledge:
+  corpora:
+    - name: hr-it-policies
+      owner: Jagadish Meduri (HR + IT knowledge product)
+      acl: "employees group for general policies; HR-COMP pay bands only hr / people-managers (trimmed before ranking)"
+      temporal: "valid_from / valid_to per edition; as_of from the question's business date (e.g. 2025 stipend edition)"
+      refresh_sla: 24h + event-driven on publish
+      sensitivity: internal; HR-COMP confidential
+contracts:
+  mcp: []
+  a2a: []
+  notes: Read-only knowledge agent; the corpus is served in-process by the shared ContextBuilder. The next rung exposes it as an MCP resource and adds a ticketing.create_ticket write for unanswered questions.
+stop_conditions:
+  - at most 2 retrieval attempts (one corrective rewrite), then insufficient_evidence
+  - no answer is generated without graded-relevant evidence
+  - answers failing the groundedness critic (uncited or unsupported claims) are withheld
+  - context capped by an explicit token budget
+graph: policy_qa.graph:build_graph
+failure_playbook:
+  - node: rewrite_query
+    success: model rewrites the question into a search query
+    retry: fallback deployment via breaker
+    compensate: n/a (no side effects)
+    degrade: deterministic lexical rewrite / synonym expansion when models are down
+    escalate: n/a
+  - node: retrieve
+    success: hybrid hits, ACL-trimmed and valid on the as-of date, sanitized
+    retry: corrective rewrite + one retry (graph edge)
+    compensate: n/a
+    degrade: injected spans neutralised and flagged; search outage -> insufficient_evidence (never answer from model memory)
+    escalate: page the knowledge owner if the index lags SLA (ops runbook)
+  - node: grade_chunks
+    success: model grades relevance
+    retry: fallback deployment
+    compensate: n/a
+    degrade: lexical overlap grader
+    escalate: n/a
+  - node: pack_context
+    success: evidence packed within budget with source IDs
+    retry: n/a
+    compensate: n/a
+    degrade: lowest-ranked chunks truncated/dropped to fit budget
+    escalate: n/a
+  - node: generate_answer
+    success: cited answer from packed documents only
+    retry: fallback deployment
+    compensate: n/a
+    degrade: extractive answer (cited verbatim sentences) when models are down
+    escalate: n/a
+  - node: check_groundedness
+    success: every claim cited and supported by packed context
+    retry: n/a - no argue-with-the-model loops
+    compensate: n/a
+    degrade: ungrounded draft withheld -> insufficient_evidence
+    escalate: n/a
+  - node: finalize
+    success: Answer schema with citations and flagged injections
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: n/a
+  - node: insufficient_evidence
+    success: honest fallback with HR / IT contact
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: human HR / IT channel named in the reply
+chaos:
+  - {fault: model, node: generate_answer, exit: degrade, invariant: "still answered with a verbatim, cited sentence (HR-PTO-2)"}
+  - {fault: retrieval, node: retrieve, exit: degrade, invariant: "insufficient_evidence citing search outage; no answer generated from model memory"}
+  - {fault: jailbreak, node: retrieve, exit: degrade, invariant: "poisoned chunk sanitized and flagged; answer grounded, no admin-mode text"}
+eval:
+  golden: evals/golden.jsonl
+  suite: policy_qa.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.9"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"

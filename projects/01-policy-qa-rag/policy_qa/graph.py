@@ -5,12 +5,18 @@ rewrite_query -> retrieve (+sanitize) -> grade_chunks
                              grounded -> finalize | ungrounded -> insufficient_evidence
     weak & attempt < 2 -> rewrite_query (expanded) -> retrieve ...
     weak & attempt = 2 -> insufficient_evidence
+
+Doctrine wiring: retrieval goes through the shared ContextBuilder (hybrid BM25 + vector with
+RRF, ACL trim by principal, as-of temporal filter); the model is a fallback chain and each
+LLM step has a deterministic degrade (lexical rewrite / lexical grader / extractive answer);
+a retrieval outage takes the honest insufficient-evidence exit. Exits land in state["exits"].
 """
 
 from __future__ import annotations
 
 import operator
 import re
+from datetime import date
 from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.language_models import BaseChatModel
@@ -19,9 +25,12 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
 from policy_qa import llm as prompts
-from policy_qa.corpus import load_chunks
 from policy_qa.guards import CITATION_RE, groundedness, pack_context, sanitize
-from policy_qa.retriever import BM25Retriever, Retriever
+from policy_qa.knowledge import ContextBuilderRetriever, default_retriever
+from policy_qa.retriever import Retriever
+from shared.context import Principal, RetrievalUnavailableError
+from shared.observability import install
+from shared.resilience import ModelUnavailableError, exit_record, with_fallback
 
 MAX_ATTEMPTS = 2
 
@@ -45,6 +54,10 @@ class Answer(BaseModel):
 
 class RagState(TypedDict, total=False):
     question: str
+    principal: dict[str, Any]  # {"id", "groups": [...], "tenant"} - ACL scope
+    as_of: str  # ISO date of the business event (temporal policy retrieval)
+    exits: Annotated[list[dict[str, str]], operator.add]
+    unavailable: bool
     attempts: int
     query: str
     queries: Annotated[list[str], operator.add]
@@ -72,25 +85,59 @@ def build_graph(
     k: int = 4,
     budget_tokens: int = 350,
 ):
+    install()
     if llm is None:
         from shared.llm import get_llm
 
         llm = get_llm(mock_responder=prompts.mock_responder)
-    retriever = retriever or BM25Retriever(load_chunks())
+    llm = with_fallback(llm)
+    retriever = retriever or default_retriever()
 
     def ask(system: str, user: str) -> str:
         return str(llm.invoke([SystemMessage(system), HumanMessage(user)]).content).strip()
 
+    def scoped(state: RagState) -> Retriever:
+        if isinstance(retriever, ContextBuilderRetriever) and (
+            state.get("principal") or state.get("as_of")
+        ):
+            p = state.get("principal")
+            principal = (
+                Principal(p["id"], frozenset(p.get("groups", [])), p.get("tenant")) if p else None
+            )
+            as_of = date.fromisoformat(state["as_of"]) if state.get("as_of") else None
+            return retriever.with_scope(principal, as_of)
+        return retriever
+
     def rewrite_query(state: RagState) -> dict[str, Any]:
         attempt = state.get("attempts", 0) + 1
-        q = ask(prompts.REWRITE_SYSTEM.format(attempt=attempt), state["question"])
+        exits = []
+        try:
+            q = ask(prompts.REWRITE_SYSTEM.format(attempt=attempt), state["question"])
+        except ModelUnavailableError:
+            q = prompts.mock_rewrite(state["question"], attempt)  # deterministic rewrite
+            exits.append(exit_record("rewrite_query", "degrade", "lexical rewrite"))
         if attempt > 1:  # keep the original words too, so expansion never loses recall
             q = f"{state['question']} {q}"
-        return {"attempts": attempt, "query": q, "queries": [q], "trace": ["rewrite_query"]}
+        return {
+            "attempts": attempt,
+            "query": q,
+            "queries": [q],
+            "trace": ["rewrite_query"],
+            "exits": exits,
+        }
 
     def retrieve(state: RagState) -> dict[str, Any]:
         hits, flagged = [], []
-        for h in retriever.search(state["query"], k=k):
+        try:
+            found = scoped(state).search(state["query"], k=k)
+        except RetrievalUnavailableError as exc:
+            return {
+                "retrieved": [],
+                "unavailable": True,
+                "trace": ["retrieve"],
+                "exits": [exit_record("retrieve", "degrade", f"{exc}: answer withheld")],
+            }
+        for h in found:
             clean, removed = sanitize(h.chunk.text)  # before ANY model sees retrieved text
             flagged += [f"{h.chunk.id}: {r}" for r in removed]
             hits.append(
@@ -102,20 +149,32 @@ def build_graph(
                     "score": h.score,
                 }
             )
-        return {"retrieved": hits, "flagged": flagged, "trace": ["retrieve"]}
+        exits = (
+            [exit_record("retrieve", "degrade", f"{len(flagged)} injected span(s) neutralised")]
+            if flagged
+            else []
+        )
+        return {"retrieved": hits, "flagged": flagged, "trace": ["retrieve"], "exits": exits}
 
     def grade_chunks(state: RagState) -> dict[str, Any]:
-        relevant = []
+        relevant, exits = [], []
         for c in state["retrieved"]:
             user = (
                 f"Question: {state['question']}\nSearch query: {state['query']}\n"
                 f"Document: {c['section']}. {c['text']}"
             )
-            if ask(prompts.GRADE_SYSTEM, user).lower().startswith("yes"):
+            try:
+                verdict = ask(prompts.GRADE_SYSTEM, user)
+            except ModelUnavailableError:
+                verdict = prompts.mock_grade(state["query"], f"{c['section']}. {c['text']}")
+                exits = [exit_record("grade_chunks", "degrade", "lexical grader")]
+            if verdict.lower().startswith("yes"):
                 relevant.append(c)
-        return {"relevant": relevant, "trace": ["grade_chunks"]}
+        return {"relevant": relevant, "trace": ["grade_chunks"], "exits": exits}
 
     def after_grade(state: RagState) -> str:
+        if state.get("unavailable"):
+            return "insufficient_evidence"
         if state["relevant"]:
             return "pack_context"
         return "rewrite_query" if state["attempts"] < MAX_ATTEMPTS else "insufficient_evidence"
@@ -134,9 +193,17 @@ def build_graph(
             f"Question: {state['question']}\nSearch query: {state['query']}\n\n"
             f"<documents>\n{docs}\n</documents>"
         )
+        exits = []
+        try:
+            draft = ask(prompts.ANSWER_SYSTEM, user)
+        except ModelUnavailableError:
+            # Limited but true: extractive, cited sentences from the packed evidence.
+            draft = prompts.mock_answer(f"{state['question']} {state['query']}", user)
+            exits.append(exit_record("generate_answer", "degrade", "extractive answer"))
         return {
-            "draft": _normalize_citations(ask(prompts.ANSWER_SYSTEM, user)),
+            "draft": _normalize_citations(draft),
             "trace": ["generate_answer"],
+            "exits": exits,
         }
 
     def check_groundedness(state: RagState) -> dict[str, Any]:
@@ -171,7 +238,9 @@ def build_graph(
         return {"final": final.model_dump(), "trace": ["finalize"]}
 
     def insufficient_evidence(state: RagState) -> dict[str, Any]:
-        if "check" in state:
+        if state.get("unavailable"):
+            reason = "policy search is temporarily unavailable"
+        elif "check" in state:
             reason = "; ".join(state["check"]["problems"])
         else:
             reason = f"no relevant policy sections after {state['attempts']} retrieval attempts"
@@ -209,7 +278,7 @@ def build_graph(
     )
     g.add_edge("finalize", END)
     g.add_edge("insufficient_evidence", END)
-    return g.compile()
+    return g.compile(name="policy-qa-rag")
 
 
 __all__ = ["CITATION_RE", "Answer", "build_graph"]
