@@ -10,12 +10,19 @@ load_account (collections-reader) -> policy_gate
                                contact rules re-checked at send time)
                     reject  -> rejected
 every branch -> finalize (verify hash-chained audit log)
+
+Doctrine wiring: every tool call crosses MCP through a per-identity ToolGateway (see sor.py);
+the model is a fallback chain (all deployments down -> policy-default plan + safe template,
+still human-reviewed); CRM outage at load -> deferred to the next run (never contact on stale
+data); payments outage after approval -> plan write queued for replay and no outreach sent;
+messaging outage -> message deferred. Non-happy exits go to ``state["exits"]``.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any, Literal, TypedDict
+import operator
+from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -30,6 +37,11 @@ from collections_agent.llm import DRAFT_SYSTEM, PROPOSE_SYSTEM, mock_responder
 from collections_agent.registry import IDENTITIES
 from collections_agent.systems import Systems, seed_systems
 from shared.llm import get_llm
+from shared.observability import install
+from shared.resilience import ModelUnavailableError, exit_record, with_fallback
+from shared.tools import SystemOfRecordUnavailableError
+
+NEUTRALISED = "[removed: suspected injected instruction]"
 
 
 class CollectionsState(TypedDict, total=False):
@@ -49,6 +61,8 @@ class CollectionsState(TypedDict, total=False):
     next_allowed: str
     outcome: str
     audit_ok: bool
+    unavailable: str
+    exits: Annotated[list[dict[str, str]], operator.add]
 
 
 def _parse_json(text: str) -> dict[str, Any]:
@@ -66,7 +80,8 @@ def build_graph(
 ):
     s = systems or seed_systems()
     assert s.registry is not None
-    llm = llm or get_llm(mock_responder=mock_responder)
+    install()
+    llm = with_fallback(llm or get_llm(mock_responder=mock_responder))
     reader = s.registry.client("collections-reader")
     proposer = s.registry.client("plan-proposer")
     writer = s.registry.client("plan-writer")
@@ -76,11 +91,27 @@ def build_graph(
         s.audit.record(actor, action, s.clock(), **details)
 
     def load_account(state: CollectionsState) -> dict:
-        acct = reader.call("get_account", account_id=state["account_id"])
-        hist = reader.call("get_contact_history", account_id=state["account_id"])
-        return {"account": acct, "history": hist}
+        try:
+            acct = reader.call("get_account", account_id=state["account_id"])
+            hist = reader.call("get_contact_history", account_id=state["account_id"])
+        except SystemOfRecordUnavailableError as exc:
+            log("load_failed", account_id=state["account_id"], error=str(exc))
+            return {
+                "unavailable": str(exc),
+                "exits": [exit_record("load_account", "retry", "CRM unavailable: next run")],
+            }
+        exits = []
+        if NEUTRALISED in json.dumps(acct):
+            exits.append(exit_record("load_account", "degrade", "injected text neutralised"))
+        return {"account": acct, "history": hist, "exits": exits}
 
     def policy_gate(state: CollectionsState) -> dict:
+        if state.get("unavailable"):
+            reasons = [f"systems unavailable - retry next run ({state['unavailable']})"]
+            log(
+                "policy_decision", account_id=state["account_id"], decision="defer", reasons=reasons
+            )
+            return {"decision": "defer", "reasons": reasons}
         decision, reasons = policy.contact_decision(state["account"], state["history"], s.now)
         log("policy_decision", account_id=state["account_id"], decision=decision, reasons=reasons)
         return {"decision": decision, "reasons": reasons}
@@ -94,6 +125,9 @@ def build_graph(
         return {"outcome": "no_contact"}
 
     def defer(state: CollectionsState) -> dict:
+        if state.get("unavailable"):
+            log("contact_deferred", account_id=state["account_id"], next_allowed="next run")
+            return {"outcome": "deferred", "next_allowed": "next batch run"}
         nxt = policy.next_allowed_time(state["account"], s.now)
         log("contact_deferred", account_id=state["account_id"], next_allowed=nxt)
         return {"outcome": "deferred", "next_allowed": nxt}
@@ -110,20 +144,38 @@ def build_graph(
                 "max_discount_pct": policy.MAX_DISCOUNT_PCT,
             },
         }
-        raw = _parse_json(
-            str(llm.invoke([SystemMessage(PROPOSE_SYSTEM), HumanMessage(json.dumps(view))]).content)
-        )
+        exits = []
+        try:
+            raw = _parse_json(
+                str(
+                    llm.invoke(
+                        [SystemMessage(PROPOSE_SYSTEM), HumanMessage(json.dumps(view))]
+                    ).content
+                )
+            )
+        except ModelUnavailableError:
+            raw = {"rationale": "model unavailable: policy-default plan"}
+            exits.append(exit_record("propose_plan", "degrade", "model unavailable: default plan"))
         terms, violations = policy.check_plan(raw, acct["balance"])
-        plan = proposer.call("quote_plan", account_id=acct["account_id"], **terms)
+        try:
+            plan = proposer.call("quote_plan", account_id=acct["account_id"], **terms)
+        except SystemOfRecordUnavailableError as exc:
+            return {
+                "unavailable": str(exc),
+                "exits": [*exits, exit_record("propose_plan", "retry", "ledger down: next run")],
+            }
         first = acct["name"].split()[0]
-        body = str(
-            llm.invoke(
-                [
-                    SystemMessage(DRAFT_SYSTEM),
-                    HumanMessage(json.dumps({"first_name": first, "plan": plan})),
-                ]
-            ).content
-        ).strip()
+        try:
+            body = str(
+                llm.invoke(
+                    [
+                        SystemMessage(DRAFT_SYSTEM),
+                        HumanMessage(json.dumps({"first_name": first, "plan": plan})),
+                    ]
+                ).content
+            ).strip()
+        except ModelUnavailableError:
+            body = ""  # -> message guard swaps in the safe template
         issues = policy.check_message(body)
         if issues:
             body = policy.safe_template(first, plan)
@@ -140,6 +192,7 @@ def build_graph(
             "message": body,
             "message_issues": issues,
             "rationale": raw.get("rationale", ""),
+            "exits": exits,
         }
 
     def reviewer_approval(state: CollectionsState) -> dict:
@@ -171,14 +224,22 @@ def build_graph(
         return {"review": {**review, "decision": decision}}
 
     def execute_plan(state: CollectionsState) -> dict:
-        rec = writer.call(
-            "create_payment_plan",
-            account_id=state["account_id"],
-            plan=state["plan"],
-            approved_by=state["review"]["reviewer"],
-            idempotency_key=f"{state['account_id']}:{state['plan']['total']}:"
+        args = {
+            "account_id": state["account_id"],
+            "plan": state["plan"],
+            "approved_by": state["review"]["reviewer"],
+            "idempotency_key": f"{state['account_id']}:{state['plan']['total']}:"
             f"{state['plan']['months']}",
-        )
+        }
+        try:
+            rec = writer.call("create_payment_plan", **args)
+        except SystemOfRecordUnavailableError as exc:
+            s.pending.append({"tool": "create_payment_plan", **args})
+            log("plan_write_queued", account_id=state["account_id"], error=str(exc))
+            return {
+                "outcome": "plan_write_queued",
+                "exits": [exit_record("execute_plan", "degrade", "payments down: write queued")],
+            }
         return {"plan_record": rec}
 
     def send_outreach(state: CollectionsState) -> dict:
@@ -194,12 +255,20 @@ def build_graph(
                 next_allowed=nxt,
             )
             return {"outcome": "plan_created_message_deferred", "next_allowed": nxt}
-        msg = sender.call(
-            "send_message",
-            account_id=state["account_id"],
-            channel=state["account"]["channel"],
-            body=state["message"],
-        )
+        try:
+            msg = sender.call(
+                "send_message",
+                account_id=state["account_id"],
+                channel=state["account"]["channel"],
+                body=state["message"],
+            )
+        except SystemOfRecordUnavailableError as exc:
+            log("outreach_deferred", account_id=state["account_id"], reasons=[str(exc)])
+            return {
+                "outcome": "plan_created_message_deferred",
+                "next_allowed": "when messaging recovers",
+                "exits": [exit_record("send_outreach", "degrade", "messaging down: deferred")],
+            }
         return {"message_record": msg, "outcome": "plan_created_message_sent"}
 
     def rejected(state: CollectionsState) -> dict:
@@ -239,10 +308,18 @@ def build_graph(
     g.add_conditional_edges(
         "policy_gate", route_policy, ["propose_plan", "hardship_referral", "no_contact", "defer"]
     )
-    g.add_edge("propose_plan", "reviewer_approval")
+    g.add_conditional_edges(
+        "propose_plan",
+        lambda st: "defer" if st.get("unavailable") else "reviewer_approval",
+        ["reviewer_approval", "defer"],
+    )
     g.add_conditional_edges("reviewer_approval", route_review, ["execute_plan", "rejected"])
-    g.add_edge("execute_plan", "send_outreach")
+    g.add_conditional_edges(
+        "execute_plan",
+        lambda st: "send_outreach" if st.get("plan_record") else "finalize",
+        ["send_outreach", "finalize"],
+    )
     for n in ("hardship_referral", "no_contact", "defer", "send_outreach", "rejected"):
         g.add_edge(n, "finalize")
     g.add_edge("finalize", END)
-    return g.compile(checkpointer=checkpointer or MemorySaver())
+    return g.compile(checkpointer=checkpointer or MemorySaver(), name="collections-agent")

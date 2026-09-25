@@ -4,6 +4,9 @@ Each tool declares the scope it needs. Each graph node receives a ``ScopedClient
 ONE identity; calling a tool outside that identity's scopes raises ``PermissionDenied`` and is
 audited. Identities map 1:1 to what would be separate managed identities / service principals
 with their own credentials in production.
+
+Transport: when ``use_mcp`` is called (``seed_systems`` does), every permitted call is routed
+through that identity's MCP ToolGateway instead of calling the Python function directly.
 """
 
 from __future__ import annotations
@@ -38,6 +41,20 @@ class ToolRegistry:
     def __init__(self, audit: AuditLog, clock: Callable[[], str]):
         self._tools: dict[str, ToolSpec] = {}
         self.audit, self.clock = audit, clock
+        self.routes: dict[str, tuple[str, str, bool]] = {}
+        self.gateways: dict[str, Any] = {}
+        self.write_args: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
+
+    def use_mcp(
+        self,
+        routes: dict[str, tuple[str, str, bool]],
+        gateways: dict[str, Any],
+        write_args: Callable[[str, dict[str, Any]], dict[str, Any]],
+    ) -> None:
+        self.routes, self.gateways, self.write_args = routes, gateways, write_args
+
+    def scopes(self) -> dict[str, str]:
+        return {n: t.scope for n, t in self._tools.items()}
 
     def register(self, name: str, scope: str, fn: Callable[..., Any], writes: bool = False):
         self._tools[name] = ToolSpec(name, scope, fn, writes)
@@ -57,7 +74,12 @@ class ToolRegistry:
                 identity, "permission_denied", self.clock(), tool=name, required_scope=tool.scope
             )
             raise PermissionDenied(f"{identity} lacks scope {tool.scope} for {name}")
-        result = tool.fn(**kwargs)
+        if name in self.routes and identity in self.gateways:
+            server, mcp_tool, write = self.routes[name]
+            args = self.write_args(name, kwargs) if write and self.write_args else kwargs
+            result = self.gateways[identity].call(server, mcp_tool, **args)
+        else:
+            result = tool.fn(**kwargs)
         self.audit.record(
             identity, f"tool:{name}", self.clock(), scope=tool.scope, write=tool.writes, args=kwargs
         )

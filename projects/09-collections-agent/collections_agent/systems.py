@@ -18,6 +18,7 @@ class Systems:
     history: dict[str, list[dict[str, Any]]]
     plans: dict[str, dict[str, Any]] = field(default_factory=dict)
     outbox: list[dict[str, Any]] = field(default_factory=list)
+    pending: list[dict[str, Any]] = field(default_factory=list)  # queued writes for replay
     now: datetime = DEFAULT_NOW
     audit: AuditLog = field(default_factory=AuditLog)
     registry: ToolRegistry | None = None
@@ -157,5 +158,9 @@ def seed_systems(now: datetime = DEFAULT_NOW) -> Systems:
     reg.register("quote_plan", "plans:propose", s.quote_plan)
     reg.register("create_payment_plan", "plans:write", s.create_payment_plan, writes=True)
     reg.register("send_message", "messages:send", s.send_message, writes=True)
+    from collections_agent.registry import IDENTITIES
+    from collections_agent.sor import ROUTES, build_gateways, write_args
+
+    reg.use_mcp(ROUTES, build_gateways(s, IDENTITIES, reg.scopes()), write_args)
     s.registry = reg
     return s

@@ -1,0 +1,132 @@
+project: 09-collections-agent
+title: Governed collections agent (least privilege + HITL + audit)
+owner: Jagadish Meduri
+industry: Financial services / receivables (lending, utilities, telecom)
+summary: >-
+  For each past-due account, a deterministic policy gate checks hardship, cease-and-desist,
+  disputes, contact hours and frequency caps. When contact is allowed, the agent proposes a
+  payment plan within company limits and drafts a compliant message. A human approves both
+  before the plan is written or the message is sent, and every step is hash-chain audited.
+maturity:
+  level: 4
+  rationale: write-capable agent with per-identity least privilege over MCP, deterministic compliance gates, separation of duties and tamper-evident audit
+  next_rung: A2A hand-off to a hardship-assessment agent; supervised auto-approval for low-balance plans after a measured compliance record
+kpis:
+  - {name: Promise-to-pay / plan acceptance, target: "+15% vs manual outreach (holdout)", measure: "plans accepted / contacts attempted"}
+  - {name: Compliance incidents, target: "0 (contact-rule, disclosure, threat-language)", measure: "audit review + outbox scan"}
+  - {name: Collector handle time, target: "-50% per account", measure: "review time per approved plan"}
+roi: >-
+  Value is recovered balances from more timely, affordable plans, plus collector hours saved on
+  drafting. Subtract token cost and reviewer time. Avoided regulatory penalties and complaints
+  are the main risk-side value; they are not modelled as a number, but every guardrail is
+  audited so they can be.
+planes:
+  experience: collector review console (interrupt payload with masked PII, clamped-policy notes, draft message); customer email/SMS
+  agent: LangGraph workflow (load -> policy gate -> propose -> reviewer interrupt -> write -> send-time re-check -> finalize audit)
+  knowledge: none at runtime (contact/plan/message policy is deterministic code - the control)
+  data: receivables CRM (accounts, contact history, messaging) and payments ledger (plans) via MCP, per-identity gateways
+systems_of_record:
+  - {name: Receivables CRM, kind: mcp, contract: "crm.get_account, crm.get_contact_history (read); crm.send_customer_message (write, idempotent)", access: read_write}
+  - {name: Payments ledger, kind: mcp, contract: "payments.quote_payment_plan (read); payments.create_payment_plan (write, idempotent, approved_by)", access: read_write}
+knowledge:
+  corpora: []
+  notes: No retrieval. The model sees only a minimised, PII-free account view; account text returned by tools is sanitised because it is untrusted.
+contracts:
+  mcp:
+    - "crm.get_account(account_id) -> Account"
+    - "crm.get_contact_history(account_id) -> list[Attempt]"
+    - "crm.send_customer_message(account_id, channel, body, idempotency_key, dry_run)"
+    - "payments.quote_payment_plan(account_id, months, discount_pct) -> Plan"
+    - "payments.create_payment_plan(account_id, plan, approved_by, idempotency_key, dry_run)"
+  a2a: []
+  notes: The scoped registry decides identity -> tool (and audits denials); each call then crosses MCP through that identity's gateway, which has its own allowlist (defence in depth).
+identities:
+  - {identity: mi-collections-reader, allow: [crm.get_account, crm.get_contact_history]}
+  - {identity: mi-plan-proposer, allow: [payments.quote_payment_plan]}
+  - {identity: mi-plan-writer, allow: [payments.create_payment_plan]}
+  - {identity: mi-outreach-sender, allow: [crm.send_customer_message]}
+stop_conditions:
+  - hardship / cease-and-desist / dispute -> no automated contact
+  - contact hours 08:00-21:00 local and 7 attempts / 7 days, re-checked at send time
+  - plan clamped to 12 months, 10% discount, $25 minimum installment
+  - nothing written or sent without a valid human reviewer (agents cannot approve)
+graph: collections_agent.graph:build_graph
+failure_playbook:
+  - node: load_account
+    success: account + history loaded via the reader identity (schema-valid, sanitised)
+    retry: gateway backoff; CRM still down -> account deferred to the next batch run
+    compensate: n/a (read-only)
+    degrade: injected account text neutralised before use
+    escalate: n/a
+  - node: policy_gate
+    success: deterministic contact decision with reasons
+    retry: n/a
+    compensate: n/a
+    degrade: systems unavailable -> defer (never contact on stale data)
+    escalate: hardship -> hardship team
+  - node: hardship_referral
+    success: referred to hardship team (audited)
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: hardship team owns the account
+  - node: no_contact
+    success: contact suppressed with reasons (audited)
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: n/a
+  - node: defer
+    success: next allowed contact time computed
+    retry: re-run at next_allowed / next batch
+    compensate: n/a
+    degrade: n/a
+    escalate: n/a
+  - node: propose_plan
+    success: LLM plan clamped into policy + compliant draft
+    retry: fallback deployment
+    compensate: n/a (quote has no side effects)
+    degrade: models down -> policy-default plan + safe template (still reviewed); ledger quote down -> deferred to next run
+    escalate: n/a
+  - node: reviewer_approval
+    success: valid human approves
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: is the human gate; invalid/agent reviewer -> auto-reject
+  - node: execute_plan
+    success: plan booked once (idempotency key account:total:months)
+    retry: gateway backoff on transient errors
+    compensate: n/a - nothing sent before the plan exists
+    degrade: ledger down -> write queued for replay, no outreach
+    escalate: n/a
+  - node: send_outreach
+    success: message sent after send-time contact re-check
+    retry: gateway backoff
+    compensate: n/a
+    degrade: outside hours or messaging down -> plan kept, message deferred
+    escalate: n/a
+  - node: rejected
+    success: rejection recorded
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: n/a
+  - node: finalize
+    success: audit hash chain verified
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: broken chain -> security/compliance review
+chaos:
+  - {fault: model, node: propose_plan, exit: degrade, invariant: "policy-default plan + compliant template; still human-approved before sending"}
+  - {fault: sor, node: load_account, exit: retry, invariant: "CRM down -> deferred to next run; nothing written or sent"}
+  - {fault: "sor:payments.create_payment_plan", node: execute_plan, exit: degrade, invariant: "ledger down after approval -> plan write queued, no message sent"}
+  - {fault: jailbreak, node: load_account, exit: degrade, invariant: "injected account text neutralised; plan within policy; no injected text in outbound message"}
+eval:
+  golden: evals/golden.jsonl
+  suite: collections_agent.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.9"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"

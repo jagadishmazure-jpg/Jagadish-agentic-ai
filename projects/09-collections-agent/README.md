@@ -105,3 +105,30 @@ pytest projects/09-collections-agent
 5. **Production path.** Managed identities per tool, Key Vault, APIM in front of write APIs,
    Postgres checkpointer, a reviewer UI in Teams, consent and channel preferences, and
    observability via LangSmith / App Insights with the audit log as the system of record.
+
+## Doctrine compliance
+
+This agent meets the portfolio's production-readiness doctrine. The full card is in
+[`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml).
+
+What the doctrine upgrade changed:
+
+- **Registry calls cross MCP.** The scoped registry still decides which identity may call
+  which tool, and audits denials. Every permitted call now goes over MCP (the `crm` and
+  `payments` servers), through that identity's own `ToolGateway`. Each gateway has its own
+  allowlist, schema validation, retries and payload sanitisation. There are four managed
+  identities: `mi-collections-reader`, `mi-plan-proposer`, `mi-plan-writer` and
+  `mi-outreach-sender`.
+- **Degrade exits.**
+  - All models down: the agent proposes a policy-default plan with the safe template, which
+    is still human-reviewed.
+  - CRM down: the account is deferred to the next run.
+  - Payments ledger down after approval: the write is queued in `systems.pending` and no
+    message is sent.
+  - Messaging down: the message is deferred.
+- **Tracing and exit records.** OTel spans are on, and exits go to `state["exits"]`.
+
+```bash
+python -m evals --project 09
+pytest projects/09-collections-agent/tests/test_chaos.py
+```
