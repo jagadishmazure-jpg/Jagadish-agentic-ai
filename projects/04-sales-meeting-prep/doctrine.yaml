@@ -1,0 +1,84 @@
+project: 04-sales-meeting-prep
+title: Sales meeting prep (parallel research brief)
+owner: Jagadish Meduri
+industry: B2B sales / revenue operations
+summary: >-
+  Before each customer meeting, the account executive gets a one-page brief compiled in
+  parallel from CRM history, open deals, support health and news. Every bullet cites a record,
+  and any missing source is shown as a gap.
+maturity:
+  level: 3
+  rationale: read-only multi-source agent over CRM/support via MCP with citation enforcement; no writes
+  next_rung: A2A hand-off to a proposal agent + CRM write-back of the meeting plan (HITL) once AE adoption is measured
+kpis:
+  - {name: AE prep time, target: "-50% vs baseline (self-reported + calendar gap)", measure: "minutes between brief delivery and meeting start spent in CRM"}
+  - {name: Brief adoption, target: ">= 70% of external meetings", measure: "briefs opened / meetings with a brief"}
+  - {name: Citation integrity, target: "100% of bullets cite an existing record", measure: "eval groundedness + zero invalid citations"}
+roi: >-
+  Value is AE hours returned to selling plus win-rate uplift on meetings with a brief (measured
+  with a holdout), minus token/API cost. Stale or missing-source briefs are flagged instead of
+  guessed, so a bad brief does not cost a deal.
+planes:
+  experience: calendar-triggered brief delivered to Teams/Slack 30 minutes before the meeting (markdown)
+  agent: LangGraph map-reduce (plan -> Send fan-out research x N -> synthesize -> render_brief) with quorum rule
+  knowledge: no corpus; findings are live system-of-record reads, cited by record id
+  data: CRM (interactions, opportunities) and support desk via MCP; public news API direct
+systems_of_record:
+  - {name: CRM (Salesforce/Dynamics-like), kind: mcp, contract: "crm.get_interaction_history, crm.get_open_deals", access: read}
+  - {name: Support desk, kind: mcp, contract: "ticketing.list_tickets", access: read}
+  - {name: News API, kind: api, contract: "public headlines by account (untrusted, cited by URL)", access: read}
+knowledge:
+  corpora: []
+  notes: No retrieval corpus. Every tool payload is schema-validated and sanitised before it is used, because CRM notes and ticket subjects are untrusted text.
+contracts:
+  mcp:
+    - "crm.get_interaction_history(account) -> list[Interaction]"
+    - "crm.get_open_deals(account) -> list[Deal]"
+    - "ticketing.list_tickets(account) -> list[Ticket]"
+  a2a: []
+  notes: Read-only allowlist for identity mi-meeting-prep; the gateway does no retries because the research node owns its single transient retry.
+identities:
+  - {identity: mi-meeting-prep, allow: [crm.get_interaction_history, crm.get_open_deals, ticketing.list_tickets]}
+stop_conditions:
+  - one research branch per source (max 4), one retry for transient errors only
+  - below 2 successful sources the brief is marked insufficient_data
+  - uncited or invented-id bullets are dropped deterministically
+graph: meeting_prep.graph:build_graph
+failure_playbook:
+  - node: plan
+    success: source list chosen (requested subset or all)
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: n/a
+  - node: research
+    success: items fetched through the gateway (schema-valid, sanitised)
+    retry: one retry for timeouts / SoR unavailable
+    compensate: n/a (read-only)
+    degrade: failed source recorded as a gap; injected text neutralised
+    escalate: n/a (AE sees the gap and verifies manually)
+  - node: synthesize
+    success: cited talking points and risks from successful findings only
+    retry: fallback deployment via breaker
+    compensate: n/a
+    degrade: rule-based cited bullets when all models are down
+    escalate: n/a
+  - node: render_brief
+    success: complete brief with deterministic tables
+    retry: n/a
+    compensate: n/a
+    degrade: partial brief with gaps section
+    escalate: insufficient_data banner tells the AE to check the CRM directly
+chaos:
+  - {fault: model, node: synthesize, exit: degrade, invariant: "brief still complete with rule-based cited bullets"}
+  - {fault: "sor:crm", node: research, exit: degrade, invariant: "CRM outage -> partial brief listing crm + deals gaps, verify manually"}
+  - {fault: sor, node: research, exit: degrade, invariant: "all systems of record down -> insufficient_data banner, news only, nothing invented"}
+  - {fault: jailbreak, node: research, exit: degrade, invariant: "injected CRM note neutralised; no admin text in the brief"}
+eval:
+  golden: evals/golden.jsonl
+  suite: meeting_prep.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.9"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"

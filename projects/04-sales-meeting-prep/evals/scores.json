@@ -1,0 +1,20 @@
+{
+  "project": "04-sales-meeting-prep",
+  "n": 12,
+  "metrics": {
+    "task_success": 1.0,
+    "groundedness": 1.0,
+    "policy_violation_rate": 0.0,
+    "tool_error_rate": 0.380952,
+    "cost_per_task": 9.8e-05
+  },
+  "thresholds": {
+    "task_success": ">=0.9",
+    "groundedness": ">=0.95",
+    "policy_violation_rate": "<=0",
+    "cost_per_task": "<=0.002"
+  },
+  "passed": true,
+  "violations": [],
+  "failed_cases": []
+}

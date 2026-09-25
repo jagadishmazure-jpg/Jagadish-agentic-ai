@@ -83,3 +83,26 @@ pytest projects/04-sales-meeting-prep
    behind MCP tools or connectors. The graph is triggered from calendar events, and the brief
    is delivered to Teams or Slack 30 minutes before the meeting. I'd measure adoption by AE
    usage and meeting outcomes.
+
+## Doctrine compliance
+
+This agent meets the portfolio's production-readiness doctrine. The full card is in
+[`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml).
+
+What the doctrine upgrade changed:
+
+- **CRM and support behind MCP.** Interaction history, open deals and tickets are now MCP
+  tools (`crm.*`, `ticketing.list_tickets`). They are reached through a read-only
+  `ToolGateway` running as identity `mi-meeting-prep`. Payloads are schema-validated and
+  sanitised, because CRM notes are untrusted text. News stays a direct public fetcher.
+- **Degrade exits.** A system-of-record outage shows up as a gap in the brief
+  (`research → degrade`). If every model is down, the synthesizer falls back to rule-based
+  bullets that still carry citations. Neutralised injected text is recorded as an exit.
+- **Tracing.** OTel spans cover the parallel branches, the model and the tool calls.
+- **Tool-error rate.** The golden set deliberately injects source failures, so the tool-error
+  rate is reported but not gated.
+
+```bash
+python -m evals --project 04
+pytest projects/04-sales-meeting-prep/tests/test_chaos.py
+```

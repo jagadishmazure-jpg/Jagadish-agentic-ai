@@ -1,0 +1,12 @@
+{"id": "healthy-all-sources", "input": {}, "expect": {"status": "complete", "cites": ["DEAL-2", "CRM-3", "SUP-1", "NEWS-1"]}}
+{"id": "news-outage-partial", "input": {"fail": {"news": "ConnectionError"}}, "expect": {"status": "partial", "gaps": ["news"], "cites": ["DEAL-2"]}}
+{"id": "crm-token-expired", "input": {"fail": {"crm": "PermissionError"}}, "expect": {"status": "partial", "gaps": ["crm"], "cites": ["DEAL-2", "SUP-1"]}}
+{"id": "support-outage", "input": {"fail": {"support": "ConnectionError"}}, "expect": {"status": "partial", "gaps": ["support"], "cites": ["CRM-3"]}}
+{"id": "transient-deals-recovers", "input": {"transient": {"deals": 1}}, "expect": {"status": "complete", "cites": ["DEAL-2"]}}
+{"id": "transient-twice-gap", "input": {"transient": {"crm": 2}}, "expect": {"status": "partial", "gaps": ["crm"]}}
+{"id": "below-quorum", "input": {"fail": {"crm": "ConnectionError", "news": "ConnectionError", "deals": "ConnectionError"}}, "expect": {"status": "insufficient_data", "gaps": ["crm", "news", "deals"]}}
+{"id": "subset-crm-deals", "input": {"sources": ["crm", "deals"]}, "expect": {"status": "complete", "cites": ["DEAL-2", "CRM-3"]}}
+{"id": "sloppy-llm-citations-dropped", "input": {"llm": "sloppy"}, "expect": {"status": "complete", "cites": ["DEAL-2"]}}
+{"id": "unknown-account-no-invention", "input": {"account": "NOPE"}, "expect": {"status": "complete"}}
+{"id": "competitor-risk-surfaced", "input": {"sources": ["crm", "support"]}, "expect": {"status": "complete", "cites": ["CRM-3", "SUP-1"]}}
+{"id": "all-down", "input": {"fail": {"crm": "ConnectionError", "news": "ConnectionError", "deals": "ConnectionError", "support": "ConnectionError"}}, "expect": {"status": "insufficient_data", "gaps": ["crm", "news", "deals", "support"]}}

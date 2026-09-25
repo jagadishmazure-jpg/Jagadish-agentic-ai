@@ -51,3 +51,8 @@ def mock_responder(messages: Sequence[BaseMessage]) -> str:
                 f"{t['subject']} - acknowledge and share ETA [{t['id']}]"
             )
     return json.dumps({"talking_points": points[:5], "risks": risks[:3]})
+
+
+# With every model deployment down, the same deterministic rules produce cited bullets
+# (degrade exit) - never uncited free text.
+rule_based_synthesis = mock_responder

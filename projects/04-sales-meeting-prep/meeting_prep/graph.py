@@ -4,6 +4,12 @@ plan --Send x N--> research(source)  (all run in ONE super-step, concurrently)
      reducers merge findings/errors/timings --> synthesize --> render_brief
 A failing branch writes an error record instead of raising, so the brief is still produced
 (with the gap called out). Below a quorum of sources, the brief is marked insufficient.
+
+Doctrine wiring: CRM / deals / support are MCP tools behind a read-only ToolGateway (identity
+mi-meeting-prep); payloads are schema-checked and sanitised, and a neutralised injected
+instruction is recorded as a research -> degrade exit. The synthesizer is a fallback model
+chain; with every deployment down it degrades to rule-based cited bullets. Non-happy exits
+go to ``state["exits"]``.
 """
 
 from __future__ import annotations
@@ -21,12 +27,22 @@ from langgraph.types import Send
 from pydantic import BaseModel, Field
 
 from meeting_prep import llm as prompts
-from meeting_prep.sources import Sources
+from meeting_prep.sor import build_gateway
+from meeting_prep.sources import Sources, seed_sources
+from shared.observability import install
+from shared.resilience import ModelUnavailableError, exit_record, with_fallback
+from shared.tools import SystemOfRecordUnavailableError
 
 ALL_SOURCES = ("crm", "news", "deals", "support")
 MIN_SOURCES = 2
 MAX_ATTEMPTS = 2  # one retry for transient errors
-TRANSIENT = (TimeoutError, ConnectionError)
+TRANSIENT = (TimeoutError, ConnectionError, SystemOfRecordUnavailableError)
+MCP_TOOLS = {
+    "crm": ("crm", "get_interaction_history"),
+    "deals": ("crm", "get_open_deals"),
+    "support": ("ticketing", "list_tickets"),
+}
+NEUTRALISED = "[removed: suspected injected instruction]"
 ID_RE = re.compile(r"\[([A-Z]+-\d+)\]")
 
 
@@ -49,6 +65,7 @@ class PrepState(TypedDict, total=False):
     timings: Annotated[list[dict[str, Any]], operator.add]
     synthesis: dict[str, Any]
     brief: dict[str, Any]
+    exits: Annotated[list[dict[str, str]], operator.add]
 
 
 class Brief(BaseModel):
@@ -61,12 +78,18 @@ class Brief(BaseModel):
     risks: list[str] = Field(default_factory=list)
 
 
-def build_graph(sources: Sources, llm: BaseChatModel | None = None):
+def build_graph(sources: Sources | None = None, llm: BaseChatModel | None = None):
+    install()
+    sources = sources or seed_sources()
     if llm is None:
         from shared.llm import get_llm
 
         llm = get_llm(mock_responder=prompts.mock_responder)
+    llm = with_fallback(llm)
+    gw = build_gateway(sources)
     fetchers = sources.fetchers()
+    for src, (server, tool) in MCP_TOOLS.items():  # systems of record go through MCP
+        fetchers[src] = lambda a, _s=server, _t=tool: gw.call(_s, _t, account=a)
 
     def plan(state: PrepState) -> dict[str, Any]:
         return {"sources": list(state.get("sources") or ALL_SOURCES)}
@@ -99,10 +122,16 @@ def build_graph(sources: Sources, llm: BaseChatModel | None = None):
                 errors = [f"{src}: {e!r}"]
                 break
         ms = round((time.perf_counter() - t0) * 1000, 1)
+        exits = []
+        if record["status"] == "error":
+            exits.append(exit_record("research", "degrade", f"{src} unavailable: gap noted"))
+        elif NEUTRALISED in json.dumps(record["items"]):
+            exits.append(exit_record("research", "degrade", f"{src}: injected text neutralised"))
         return {
             "findings": {src: record},
             "errors": errors,
             "timings": [{"source": src, "ms": ms, "status": record["status"]}],
+            "exits": exits,
         }
 
     def synthesize(state: PrepState) -> dict[str, Any]:
@@ -113,11 +142,13 @@ def build_graph(sources: Sources, llm: BaseChatModel | None = None):
             "meeting": state.get("meeting", {}),
             "findings": ok,
         }
-        raw = str(
-            llm.invoke(
-                [SystemMessage(prompts.SYNTH_SYSTEM), HumanMessage(json.dumps(payload))]
-            ).content
-        )
+        messages = [SystemMessage(prompts.SYNTH_SYSTEM), HumanMessage(json.dumps(payload))]
+        exits = []
+        try:
+            raw = str(llm.invoke(messages).content)
+        except ModelUnavailableError:
+            raw = prompts.rule_based_synthesis(messages)
+            exits = [exit_record("synthesize", "degrade", "model unavailable: rule-based bullets")]
         try:
             data = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
         except (AttributeError, json.JSONDecodeError):
@@ -134,7 +165,9 @@ def build_graph(sources: Sources, llm: BaseChatModel | None = None):
                 "talking_points": points,
                 "risks": risks,
                 "dropped_uncited": dropped_p + dropped_r,
-            }
+                "degraded": bool(exits),
+            },
+            "exits": exits,
         }
 
     def render_brief(state: PrepState) -> dict[str, Any]:
@@ -224,4 +257,6 @@ def build_graph(sources: Sources, llm: BaseChatModel | None = None):
     g.add_edge("research", "synthesize")  # fan-in: runs once after all research branches
     g.add_edge("synthesize", "render_brief")
     g.add_edge("render_brief", END)
-    return g.compile()
+    compiled = g.compile(name="sales-meeting-prep")
+    compiled.gateway = gw
+    return compiled
