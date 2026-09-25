@@ -36,6 +36,7 @@ ExceptionCode = Literal[
     "QTY_EXCEEDS_PO",
     "QTY_EXCEEDS_RECEIPT",
     "PRICE_VARIANCE",
+    "SUSPICIOUS_CONTENT",
 ]
 
 

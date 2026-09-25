@@ -1,0 +1,19 @@
+{
+  "project": "05-invoice-po-matching",
+  "n": 12,
+  "metrics": {
+    "task_success": 1.0,
+    "groundedness": null,
+    "policy_violation_rate": 0.0,
+    "tool_error_rate": 0.137255,
+    "cost_per_task": 0.000175
+  },
+  "thresholds": {
+    "task_success": ">=0.9",
+    "policy_violation_rate": "<=0",
+    "cost_per_task": "<=0.002"
+  },
+  "passed": true,
+  "violations": [],
+  "failed_cases": []
+}

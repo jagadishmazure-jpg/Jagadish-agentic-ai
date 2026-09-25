@@ -99,3 +99,32 @@ The demo covers these cases:
    regex mock for PDFs and scans. SAP S/4HANA or Oracle APIs provide POs and GRNs. Exceptions go
    to an AP work queue. Metrics: touchless rate, exception rate by code, and extraction-retry
    rate.
+
+## Doctrine compliance
+
+This agent meets the portfolio's production-readiness doctrine. The full card is in
+[`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml).
+
+What the doctrine upgrade changed:
+
+- **ERP behind MCP.** Every ERP read and the `post_invoice` write now go through the ERP MCP
+  server, via a `ToolGateway` running as identity `mi-ap-invoice-matcher`.
+  - Typed business errors (`PONotFoundError`, `POClosedError`) cross the wire and are re-raised
+    as the same types.
+  - Outages come back as retryable errors, so the node's `RetryPolicy` behaves as before.
+  - The PO payload is schema-validated.
+  - `post_invoice` is idempotent on `ap:<invoice no>`.
+- **Worker parking.** If the ERP is still down after the retries, `invoice_match.worker.process`
+  parks the invoice for redelivery. It is never misfiled as a business exception.
+- **Model fallback.** If every model deployment is down, extraction uses the deterministic
+  template parser. Schema validation and the three-way match still gate payment. The
+  exception note falls back to a template.
+- **Untrusted invoice text.** Instruction-like text is neutralised and raises a
+  `SUSPICIOUS_CONTENT` exception, so the invoice goes to AP review.
+- **Tool-error rate.** The golden set deliberately includes ERP outages and business errors,
+  so the tool-error rate is reported but not gated.
+
+```bash
+python -m evals --project 05
+pytest projects/05-invoice-po-matching/tests/test_chaos.py
+```

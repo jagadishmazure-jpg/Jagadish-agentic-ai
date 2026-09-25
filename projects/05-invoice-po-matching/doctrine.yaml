@@ -1,0 +1,95 @@
+project: 05-invoice-po-matching
+title: Invoice / PO three-way matching (AP automation)
+owner: Jagadish Meduri
+industry: Finance operations / accounts payable (manufacturing, distribution)
+summary: >-
+  Vendor invoices are extracted into a strict schema and three-way matched against the ERP
+  (PO, goods receipts, invoices already posted). Clean invoices are posted once and only once.
+  Every other invoice goes to the AP exceptions queue with typed reasons and a drafted note.
+maturity:
+  level: 4
+  rationale: governed ERP reads + one idempotent write behind MCP, deterministic match as the control, typed exceptions
+  next_rung: vendor-master semantic model + A2A hand-off to a vendor-communication agent for credit-note requests
+kpis:
+  - {name: Touchless rate, target: ">= 60% of PO-backed invoices", measure: "approved_for_payment without human touch / all PO invoices"}
+  - {name: Duplicate or over-payment, target: "0", measure: "post_invoice calls per invoice number; audit sample"}
+  - {name: Exception cycle time, target: "-40% vs baseline", measure: "exception queued -> resolved"}
+roi: >-
+  Value is AP clerk minutes per invoice saved on clean matches, plus early-payment discounts
+  captured, plus duplicate payments prevented. Subtract token and OCR cost and the review time
+  spent on exceptions, which the typed reasons and drafted notes shorten but do not remove.
+planes:
+  experience: AP mailbox / vendor portal intake; AP exceptions queue shows the typed exception list and drafted note
+  agent: LangGraph pipeline (extract with feedback retry -> fetch_erp with RetryPolicy -> deterministic three-way match -> post or exception note)
+  knowledge: none at runtime (tolerances and matching rules are code, versioned and tested)
+  data: ERP purchasing / receiving / AP via MCP (SAP-like), the system of record for POs, receipts and postings
+systems_of_record:
+  - {name: "ERP (SAP-like purchasing, receiving, AP)", kind: mcp, contract: "erp.get_purchase_order, erp.get_goods_receipts, erp.get_invoiced_quantities, erp.is_invoice_posted, erp.post_invoice", access: read_write}
+knowledge:
+  corpora: []
+  notes: The invoice document itself is the only unstructured input and is treated as untrusted data (sanitised; instruction-like text forces AP review).
+contracts:
+  mcp:
+    - "erp.get_purchase_order(po_number) -> PurchaseOrder | PONotFoundError | POClosedError"
+    - "erp.get_goods_receipts(po_number) -> {sku: qty}"
+    - "erp.get_invoiced_quantities(po_number) -> {sku: qty}"
+    - "erp.is_invoice_posted(invoice_number) -> {posted}"
+    - "erp.post_invoice(invoice, idempotency_key=ap:<invoice no>, dry_run) -> {document_id}"
+  a2a: []
+  notes: Identity mi-ap-invoice-matcher. Outages are retryable envelopes (node RetryPolicy, x3); business errors are typed and never retried.
+identities:
+  - {identity: mi-ap-invoice-matcher, allow: [erp.get_purchase_order, erp.get_goods_receipts, erp.get_invoiced_quantities, erp.is_invoice_posted, erp.post_invoice]}
+stop_conditions:
+  - at most 2 extraction attempts (second one gets validation feedback)
+  - fetch_erp retried at most 3 times on outage, then the invoice is parked for redelivery
+  - post_invoice only after a clean deterministic three-way match, idempotent on invoice number
+  - any suspicious content or exception -> AP exceptions queue, never auto-approved
+graph: invoice_match.graph:build_graph
+failure_playbook:
+  - node: extract
+    success: schema-valid invoice whose arithmetic checks pass
+    retry: second attempt with validation feedback; fallback model deployment
+    compensate: n/a
+    degrade: all models down -> deterministic template parser (validation + match still gate payment)
+    escalate: instruction-like text -> SUSPICIOUS_CONTENT exception for AP review
+  - node: extraction_failed
+    success: EXTRACTION_FAILED exception recorded
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: manual keying in the AP exceptions queue
+  - node: fetch_erp
+    success: PO, receipts and invoiced quantities fetched via MCP (schema-valid)
+    retry: RetryPolicy x3 with backoff on ERP outage; then the worker parks the invoice for redelivery
+    compensate: n/a (read-only)
+    degrade: n/a - never guesses ERP state
+    escalate: PO not found / closed / duplicate -> typed exception to AP
+  - node: three_way_match
+    success: no variances within tolerance
+    retry: n/a (deterministic)
+    compensate: n/a
+    degrade: n/a
+    escalate: variances -> typed exceptions
+  - node: approve_for_payment
+    success: invoice posted once (idempotency key ap:<invoice no>)
+    retry: replay returns the original document (idempotent)
+    compensate: reversal document by AP if a posted invoice is later disputed (manual, audited)
+    degrade: n/a
+    escalate: n/a
+  - node: draft_exception_note
+    success: note mentions every exception code and a next step
+    retry: fallback deployment
+    compensate: n/a
+    degrade: template note when models are down or the draft omits a code
+    escalate: routed to ap_exceptions_queue
+chaos:
+  - {fault: model, node: extract, exit: degrade, invariant: "clean invoice still approved via template parser; posted exactly once"}
+  - {fault: sor, node: fetch_erp, exit: retry, invariant: "ERP outage retried then parked for redelivery; nothing posted, not misfiled as exception"}
+  - {fault: jailbreak, node: extract, exit: escalate, invariant: "invoice with injected instruction goes to AP exceptions; nothing posted"}
+eval:
+  golden: evals/golden.jsonl
+  suite: invoice_match.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.9"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"

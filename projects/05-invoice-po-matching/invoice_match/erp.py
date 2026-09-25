@@ -22,6 +22,8 @@ class POClosedError(ERPError):
 class ERPUnavailableError(ERPError):
     """Transient: retried by the graph's RetryPolicy, never turned into a business exception."""
 
+    retryable = True  # tells the MCP error envelope this is an outage, not a business error
+
 
 @dataclass
 class MockERP:
