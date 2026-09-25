@@ -312,8 +312,11 @@ def install() -> Telemetry:
     with _install_lock:
         if _telemetry is None:
             _telemetry = Telemetry()
-            _handler_var.set(_telemetry.handler)
             register_configure_hook(_handler_var, inheritable=True)
+        # the handler lives in a ContextVar: set it in this context too, so a first install()
+        # from a worker thread (e.g. an ASGI test portal) does not leave the caller untraced
+        if _handler_var.get() is None:
+            _handler_var.set(_telemetry.handler)
     return _telemetry
 
 

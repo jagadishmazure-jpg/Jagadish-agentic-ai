@@ -6,6 +6,7 @@ import itertools
 from typing import Any
 
 import httpx
+from opentelemetry import trace
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 from shared import faults
@@ -30,7 +31,7 @@ class A2AClient:
     ``fastapi.testclient.TestClient(app)`` in-process for tests and demos. Timeouts belong on
     the httpx client (``httpx.Client(timeout=5.0)``)."""
 
-    def __init__(self, name: str, http: httpx.Client, caller: str):
+    def __init__(self, name: str, http: httpx.Client, caller: str | None):
         self.name, self.http, self.caller = name, http, caller
 
     def card(self) -> AgentCard:
@@ -38,8 +39,10 @@ class A2AClient:
 
     def send(self, skill: str, data: dict[str, Any], *, tenant: str) -> Task:
         t = telemetry()
+        parent = t.current_parent()  # the LangGraph node span, when called from a graph
         with t.tracer.start_as_current_span(
             f"a2a.client {self.name}/{skill}",
+            context=trace.set_span_in_context(parent) if parent else None,
             attributes={
                 "a2a.agent": self.name,
                 "a2a.skill": skill,
@@ -47,7 +50,9 @@ class A2AClient:
                 "a2a.caller": self.caller,
             },
         ) as span:
-            headers: dict[str, str] = {"x-tenant-id": tenant, "x-caller-agent": self.caller}
+            headers: dict[str, str] = {"x-tenant-id": tenant}
+            if self.caller:
+                headers["x-caller-agent"] = self.caller
             TraceContextTextMapPropagator().inject(headers)
             msg = Message(parts=[DataPart(data=data)], metadata={"skill": skill})
             body = {
