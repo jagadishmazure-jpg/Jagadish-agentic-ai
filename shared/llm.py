@@ -8,6 +8,10 @@
 3. ``ChatOpenAI`` when OPENAI_API_KEY is set.
 4. A deterministic :class:`MockChatModel` otherwise (tests, CI, laptops on a plane).
 
+``get_resilient_llm()`` wraps the same model in a primary -> fallback deployment chain with
+circuit breakers (see :mod:`shared.resilience`). Set ``AZURE_OPENAI_FALLBACK_DEPLOYMENT`` or
+``OPENAI_FALLBACK_MODEL`` to point the fallback at a smaller / paired-region deployment.
+
 ``langchain-openai`` is an optional extra and is imported lazily.
 """
 
@@ -111,3 +115,36 @@ def get_llm(
             temperature=temperature,
         )
     return ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"), temperature=temperature)
+
+
+def _fallback_model(provider: Provider, temperature: float) -> BaseChatModel | None:
+    if provider == "azure" and os.getenv("AZURE_OPENAI_FALLBACK_DEPLOYMENT"):
+        from langchain_openai import AzureChatOpenAI
+
+        return AzureChatOpenAI(
+            azure_endpoint=os.getenv("AZURE_OPENAI_FALLBACK_ENDPOINT")
+            or os.environ["AZURE_OPENAI_ENDPOINT"],
+            api_key=os.environ["AZURE_OPENAI_API_KEY"],
+            azure_deployment=os.environ["AZURE_OPENAI_FALLBACK_DEPLOYMENT"],
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
+            temperature=temperature,
+        )
+    if provider == "openai" and os.getenv("OPENAI_FALLBACK_MODEL"):
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(model=os.environ["OPENAI_FALLBACK_MODEL"], temperature=temperature)
+    return None
+
+
+def get_resilient_llm(
+    *,
+    temperature: float = 0.0,
+    mock_responder: Responder | None = None,
+    provider: Provider | None = None,
+):
+    """``get_llm`` wrapped in a fallback chain with per-deployment circuit breakers."""
+    from shared.resilience import with_fallback
+
+    provider = provider or resolve_provider()
+    primary = get_llm(temperature=temperature, mock_responder=mock_responder, provider=provider)
+    return with_fallback(primary, _fallback_model(provider, temperature))
