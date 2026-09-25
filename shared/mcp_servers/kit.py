@@ -22,6 +22,7 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+import anyio
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
@@ -55,8 +56,7 @@ class SorServer:
     def _wrap(
         self, fn: Callable[..., Any], tool: str, write: bool, dedupe: bool = True
     ) -> Callable[..., Any]:
-        @functools.wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
+        def body(*args: Any, **kwargs: Any) -> Any:
             try:
                 if faults.active(*faults.scopes("sor", self.name, tool)):
                     raise SorUnavailableError(f"{self.system} unavailable (503)")
@@ -79,6 +79,12 @@ class SorServer:
                 raise
             except Exception as exc:
                 raise ToolError(error_envelope(exc)) from exc
+
+        @functools.wraps(fn)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            # Backends are blocking SDK/HTTP clients: run them off the event loop so one slow
+            # system of record never stalls other in-flight MCP calls.
+            return await anyio.to_thread.run_sync(functools.partial(body, *args, **kwargs))
 
         return wrapper
 
