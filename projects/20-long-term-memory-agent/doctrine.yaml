@@ -1,0 +1,110 @@
+project: 20-long-term-memory-agent
+title: Long-term memory banking assistant - remembers the customer, forgets on request
+owner: Jagadish Meduri
+industry: Banking (retail digital assistant)
+summary: >-
+  A retail-banking assistant that remembers a customer across sessions without becoming a
+  liability. Short-term state is the thread checkpoint. Long-term memory lives in the
+  LangGraph Store in three kinds, namespaced per authenticated user: semantic (profile
+  facts), episodic (summaries of past conversations) and procedural (presentation
+  preferences). A write policy decides what may be saved (consent, poisoning and injection
+  checks, a preference allowlist, no credentials, identifier redaction, a confidence floor,
+  conflict rules). Retrieval ranks by relevance, recency and confidence, drops expired
+  items and quarantines anything instruction-like. Answers cite memories and a guard
+  strips citations to memories that don't exist. Customers can make it forget one fact or
+  everything, including every checkpointed thread, and an audit tombstone records the
+  erasure without keeping the erased data.
+maturity:
+  level: 3
+  rationale: memory reads and writes are autonomous inside a strict write policy; poisoning attempts escalate to review, erasure is immediate and audited, and every answer is limited to cited memories
+  next_rung: swap the in-memory Store and hashing embedder for PostgresStore with pgvector and native TTL sweeps, and add a customer-facing "what you remember about me" page with per-item delete
+kpis:
+  - {name: Correct recall, target: ">= 95% of remembered facts recalled correctly in later sessions", measure: "golden multi-session set + monthly sample of flagged conversations"}
+  - {name: Hallucinated memories, target: "0", measure: "cited memory ids not present in the user's Store (guard exits + eval groundedness)"}
+  - {name: Cross-user leakage, target: "0", measure: "isolation tests + reply scans for other users' stored values"}
+  - {name: Erasure completion, target: "100% within the request (store + threads)", measure: "tombstones vs remaining items per erased user"}
+roi: >-
+  Customers stop repeating who they are and how they want to be contacted, conversations pick
+  up where they left off and handle time drops for the human agents who inherit the thread.
+  The same controls reduce risk: consent-gated writes, no credentials in memory, poisoning
+  rejected, and provable erasure keep the memory from becoming a privacy or fraud liability.
+  Costs are one extra extraction call per turn, the Store and embedding infrastructure, and
+  review time for flagged poisoning attempts.
+planes:
+  experience: mobile / web banking chat; "forget ..." and consent commands in the conversation; an erasure receipt
+  agent: LangGraph graph (intake -> recall -> respond -> remember | forget | consent) with a checkpointer for thread state and a Store for long-term memory
+  knowledge: per-user long-term memory in the LangGraph Store (vector index for similarity + recency and confidence scoring, TTL per kind)
+  data: LangGraph Store (memories, consent, thread registry, audit tombstones) and the checkpointer (thread state); no core-banking writes
+systems_of_record:
+  - {name: Long-term memory store (LangGraph BaseStore), kind: document_store, contract: "put/get/search/delete on namespaces (memory, user_id, kind) | (consent, user_id) | (threads, user_id) | (audit, user_id)", access: read_write}
+  - {name: Thread checkpointer, kind: document_store, contract: "checkpoint per thread_id; delete_thread on erasure", access: read_write}
+knowledge:
+  corpora:
+    - name: customer-memory
+      owner: Jagadish Meduri (digital banking)
+      acl: "per authenticated user: namespace (memory, <user_id>, *) from the run config only"
+      temporal: "episodes expire after 90 days, profile facts after 365 days, preferences on change; recency half-life per kind"
+      refresh_sla: written in the turn it is learned; erased in the turn it is requested
+      sensitivity: confidential (customer PII, redacted identifiers, no credentials)
+  notes: The memory corpus is written by the agent itself, so the write policy is the ACL on what enters it; reads never cross user namespaces.
+contracts:
+  mcp: []
+  a2a: []
+  notes: No MCP or A2A tools. The Store and checkpointer are LangGraph interfaces (InMemoryStore / InMemorySaver offline; PostgresStore / PostgresSaver in production). The assistant never moves money, so no system-of-record writes exist.
+stop_conditions:
+  - no memory consent -> no long-term writes or reads (thread state only); withdrawing consent erases saved memories
+  - instruction-like or policy-override content is never stored and is flagged for review
+  - preferences may only set name, contact channel, language or answer style
+  - credentials (PIN, password, full card or SSN) are never stored; other identifiers are redacted
+  - candidates with confidence < 0.6 are not stored; inferred values never override user-stated ones
+  - replies may only cite memories that were retrieved for this user; any other citation is removed
+graph: memory_agent.graph:build_graph
+failure_playbook:
+  - node: intake
+    success: command parsed (chat / forget / forget everything / consent) and thread registered for erasure
+    retry: n/a (deterministic)
+    compensate: n/a
+    degrade: n/a
+    escalate: n/a
+  - node: recall
+    success: preferences + top memories by relevance x recency x confidence, expired items dropped
+    retry: n/a (in-process store; production store client retries with backoff)
+    compensate: n/a (read only)
+    degrade: memory store down -> answer without memory, say nothing is on file
+    escalate: instruction-like stored record quarantined and flagged
+  - node: respond
+    success: answer that cites only retrieved memories
+    retry: fallback model deployment via breaker
+    compensate: n/a
+    degrade: model down -> holding reply with no memory claims; unsupported citations stripped
+    escalate: n/a
+  - node: remember
+    success: candidates saved / updated / skipped by the write policy
+    retry: fallback model deployment for extraction
+    compensate: n/a (writes are per-key upserts; history keeps the prior value)
+    degrade: extractor or store down -> nothing saved this turn, never a guessed memory
+    escalate: poisoning / injection attempt rejected and flagged in the audit namespace
+  - node: forget
+    success: key or all memories erased (store + other threads), tombstone written
+    retry: n/a
+    compensate: n/a (erasure is intentional and irreversible)
+    degrade: n/a
+    escalate: store down -> erasure request queued for an operator, customer told
+  - node: consent
+    success: consent recorded; withdrawal erases saved memories
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: store down -> change not applied, customer asked to retry
+chaos:
+  - {fault: model, node: respond, exit: degrade, invariant: "holding reply with no memory citations; stored memories unchanged"}
+  - {fault: retrieval, node: recall, exit: degrade, invariant: "memory store down -> answer without memory and nothing recalled"}
+  - {fault: jailbreak, node: remember, exit: escalate, invariant: "jailbreak text is never stored as a memory and the attempt is flagged"}
+eval:
+  golden: evals/golden.jsonl
+  suite: memory_agent.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.9"
+    groundedness: ">=1.0"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"
