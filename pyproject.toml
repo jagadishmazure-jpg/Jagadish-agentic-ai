@@ -1,0 +1,48 @@
+[project]
+name = "agentic-ai-portfolio"
+version = "0.1.0"
+description = "Portfolio monorepo of LangGraph/LangChain business agents (offline-first, mock LLM by default)."
+authors = [{ name = "Jagadish Meduri" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=1.2.12,<2",
+    "langchain-core>=1.6.5,<2",
+    "pydantic>=2.13.5,<3",
+]
+
+[project.optional-dependencies]
+openai = ["langchain-openai>=1.6.6,<2"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1,<10",
+    "ruff>=0.16.9,<0.17",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["shared"]
+
+[tool.pytest.ini_options]
+addopts = "-q --import-mode=importlib"
+testpaths = ["shared", "projects"]
+# Project folders have hyphens (e.g. 03-refund-agent), so each project's
+# importable package lives one level down and is put on the path here.
+pythonpath = [".", "projects/03-refund-agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["RUF001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["shared", "refund_agent"]
