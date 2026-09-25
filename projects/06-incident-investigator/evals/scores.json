@@ -1,0 +1,20 @@
+{
+  "project": "06-incident-investigator",
+  "n": 13,
+  "metrics": {
+    "task_success": 1.0,
+    "groundedness": 1.0,
+    "policy_violation_rate": 0.0,
+    "tool_error_rate": 0.1,
+    "cost_per_task": 0.000189
+  },
+  "thresholds": {
+    "task_success": ">=0.9",
+    "groundedness": ">=0.9",
+    "policy_violation_rate": "<=0",
+    "cost_per_task": "<=0.005"
+  },
+  "passed": true,
+  "violations": [],
+  "failed_cases": []
+}

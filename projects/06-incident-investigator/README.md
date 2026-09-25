@@ -101,3 +101,31 @@ pytest projects/06-incident-investigator
    deploy system (Argo, GitHub Actions), and runbooks in Confluence or RAG (project 01).
    Tracing through LangSmith or OpenTelemetry. Evals replay past incidents and score root-cause
    accuracy and time to diagnosis.
+
+## Doctrine compliance
+
+This agent meets the portfolio's production-readiness doctrine. The full card is in
+[`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml).
+
+What the doctrine upgrade changed:
+
+- **Ops tools behind MCP.** Logs, metrics, deploys and rollback are now tools on the ops MCP
+  server, reached through a `ToolGateway` running as identity `mi-incident-investigator`.
+  Payloads are sanitised, so an attacker-controlled log line can't steer the agent.
+  - The rollback interrupt still runs inside the graph.
+  - Only after the resumed approval does the agent call `ops.rollback_deploy` with
+    `dry_run=False` and the key `rollback:<svc>:<ver>`.
+- **Runbooks from the shared context builder.** `runbook_lookup` now queries the shared
+  `ContextBuilder` (`incident_agent/knowledge.py`) with hybrid retrieval. DBA-only runbooks
+  are ACL-trimmed for the SRE identity, and editions are resolved as-of the incident date.
+- **Degrade exits.**
+  - All models down: a middleware stops the loop cleanly and escalates.
+  - Runbook search or telemetry down: the agent notes the gap, takes no write action, and
+    marks the report `needs_human`.
+  - Approved rollback that fails to execute: reported as *NOT EXECUTED*.
+- **Exit records.** `write_report` derives `state["exits"]` from the tool artifacts.
+
+```bash
+python -m evals --project 06
+pytest projects/06-incident-investigator/tests/test_chaos.py
+```

@@ -41,6 +41,8 @@ def mock_investigator(messages: Sequence[BaseMessage]) -> AIMessage:
     if "query_logs" not in tools:
         return _calls(("query_logs", {"service": svc, "pattern": "ERROR"}))
     logs = str(tools["query_logs"].content).lower()
+    if "telemetry unavailable" in logs:
+        return _undetermined(svc, ev, "telemetry (logs/metrics/deploys) unavailable")
     symptom = (
         "connection pool exhausted"
         if "pool exhausted" in logs
@@ -51,6 +53,8 @@ def mock_investigator(messages: Sequence[BaseMessage]) -> AIMessage:
     if "runbook_lookup" not in tools:
         return _calls(("runbook_lookup", {"symptom": symptom}))
     runbook = str(tools["runbook_lookup"].content)
+    if "runbook search unavailable" in runbook:
+        return _undetermined(svc, ev, "runbook search unavailable; no write action taken")
     versions = re.findall(r"(v\d+\.\d+\.\d+) at", str(tools["recent_deploys"].content))
     wants_rollback = "roll back to the previous version" in runbook and len(versions) >= 2
     if wants_rollback and "propose_rollback" not in tools:
@@ -90,3 +94,18 @@ def mock_investigator(messages: Sequence[BaseMessage]) -> AIMessage:
             "RB-SEARCH-02.",
         }
     return AIMessage(json.dumps(report))
+
+
+def _undetermined(svc: str, ev: list[str], why: str) -> AIMessage:
+    return AIMessage(
+        json.dumps(
+            {
+                "root_cause": f"Undetermined: {why}",
+                "summary": f"{svc} alert could not be fully investigated: {why}.",
+                "confidence": 0.1,
+                "evidence": ev,
+                "timeline": [],
+                "mitigation": "Escalated to on-call with the evidence gathered so far.",
+            }
+        )
+    )

@@ -1,0 +1,87 @@
+project: 06-incident-investigator
+title: SRE incident investigator (ReAct + HITL rollback)
+owner: Jagadish Meduri
+industry: Technology operations / SRE (any digital business)
+summary: >-
+  On an alert, an autonomous investigator reads metrics, deploys, logs and runbooks. It writes
+  an evidence-cited root-cause report. It can propose a rollback, but a rollback runs only after
+  a human approves it.
+maturity:
+  level: 4
+  rationale: agentic tool loop over MCP ops tools with hard stop conditions, evidence validation and a HITL-gated idempotent write
+  next_rung: A2A hand-off to a change-management agent (CAB ticket) and auto-approval of low-risk rollbacks after a measured precision bar
+kpis:
+  - {name: MTTR, target: "-30% on deploy-correlated incidents", measure: "alert -> mitigated, incidents with vs without the agent"}
+  - {name: Root-cause precision, target: ">= 85% confirmed by the incident review", measure: "post-incident review agrees with report root cause"}
+  - {name: Unapproved writes, target: "0", measure: "rollback_deploy calls without an approval record"}
+roi: >-
+  Value is on-call engineer minutes saved per incident, plus revenue protected by a faster
+  MTTR on customer-facing services. Subtract token and tool cost (capped per investigation)
+  and the approver's time. Wrong diagnoses are caught by the evidence gate and the review
+  before they cost anything.
+planes:
+  experience: PagerDuty/Teams alert card; approver resumes the paused thread with approve/reject; report posted to the incident channel
+  agent: create_agent ReAct investigator (guardrail middleware - steps, tool budget, loop detection, model-outage stop) inside an outer LangGraph with report validation
+  knowledge: sre-runbooks knowledge product via shared ContextBuilder (hybrid retrieval, ACL - DBA-only runbooks trimmed, as-of editions)
+  data: observability + deploy system via the ops MCP server (logs, metrics, deploys, rollback)
+systems_of_record:
+  - {name: Observability stack (logs / metrics), kind: mcp, contract: "ops.query_logs, ops.get_metrics", access: read}
+  - {name: Deploy system (CD), kind: mcp, contract: "ops.recent_deploys (read), ops.rollback_deploy (write, idempotent, HITL)", access: read_write}
+  - {name: SRE runbooks repo, kind: document_store, contract: "sre-runbooks corpus (versioned, ACL by team)", access: read}
+knowledge:
+  corpora:
+    - name: sre-runbooks
+      owner: Jagadish Meduri (SRE platform)
+      acl: "sre group; database failover runbooks dba-only (trimmed before ranking)"
+      temporal: "editions with valid_from / valid_to; lookups as-of the incident date"
+      refresh_sla: on merge to the runbooks repo
+      sensitivity: internal
+contracts:
+  mcp:
+    - "ops.query_logs(service, pattern, minutes) -> {lines}"
+    - "ops.get_metrics(service, metric, minutes) -> {baseline, current, unit, change_at}"
+    - "ops.recent_deploys(service, hours) -> {deploys}"
+    - "ops.rollback_deploy(service, to_version, idempotency_key=rollback:<svc>:<ver>, dry_run) -> {from, to}"
+  a2a: []
+  notes: Identity mi-incident-investigator. The rollback interrupt stays in the graph; the MCP write runs only after the resumed approval and has a quota of 3 per graph.
+identities:
+  - {identity: mi-incident-investigator, allow: [ops.query_logs, ops.get_metrics, ops.recent_deploys, ops.rollback_deploy]}
+stop_conditions:
+  - max 8 model turns, max 20 tool-cost units per investigation
+  - identical tool call twice -> not executed; two loop hits -> stop
+  - all model deployments down -> stop and escalate with evidence gathered so far
+  - rollback only via interrupt + human approval; report needs >= 2 observed evidence ids
+graph: incident_agent.graph:build_graph
+failure_playbook:
+  - node: open_case
+    success: alert converted into the investigation prompt
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: n/a
+  - node: investigator
+    success: tools observed with evidence ids; rollback proposed only when the runbook allows it
+    retry: fallback model deployment; gateway backoff on transient tool errors
+    compensate: rollback is itself the compensation for a bad deploy (approved, idempotent)
+    degrade: failed tool / runbook search -> gap noted in the observation, no write actions; injected log text neutralised
+    escalate: guardrail stop (steps, budget, loop, model outage) -> incomplete report to on-call
+  - node: write_report
+    success: schema-valid report citing >= 2 observed evidence ids
+    retry: n/a - no argue-with-the-model loops
+    compensate: n/a
+    degrade: n/a
+    escalate: fabricated evidence / degraded tools / unparseable -> needs_human
+chaos:
+  - {fault: model, node: investigator, exit: escalate, invariant: "incomplete report escalated; no rollback"}
+  - {fault: retrieval, node: investigator, exit: degrade, invariant: "runbook search down -> no rollback proposed; needs_human"}
+  - {fault: sor, node: investigator, exit: degrade, invariant: "telemetry down -> undetermined root cause, needs_human; no rollback"}
+  - {fault: "sor:ops.rollback_deploy", node: investigator, exit: degrade, invariant: "approved rollback that fails to execute is reported NOT EXECUTED and handed to on-call"}
+  - {fault: jailbreak, node: investigator, exit: degrade, invariant: "injected log line neutralised; upstream incident still diagnosed without a rollback"}
+eval:
+  golden: evals/golden.jsonl
+  suite: incident_agent.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.9"
+    groundedness: ">=0.9"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.005"
