@@ -1,0 +1,137 @@
+project: 03-refund-agent
+title: Refund agent (customer care)
+owner: Jagadish Meduri
+industry: Retail & e-commerce
+summary: >-
+  Policy-true refunds in seconds: deterministic eligibility over OMS data, policy text
+  retrieved as-of the delivery date, money moves only through an idempotent payment tool,
+  and anything >= $50, suspicious or evidence-poor pauses for a human.
+maturity:
+  level: 5
+  rationale: governed autonomy - small refunds are paid without a human, under policy, with traces and a HITL node on the high side of risk
+  next_rung: raise the auto-approve limit only after leakage and second-contact metrics stay green for a quarter
+kpis:
+  - {name: Refund containment, target: ">= 60% of refund intents closed without an agent", measure: "closed threads with no human touch and no second contact within 7 days"}
+  - {name: Refund leakage, target: "0 refunds outside policy", measure: "weekly audit sample of issued refunds vs policy rules"}
+  - {name: Time to honest status, target: "< 10 s p95", measure: "agent.run span duration to first reply"}
+  - {name: HITL aging, target: "p95 approval < 4 business hours", measure: "interrupt -> resume timestamps"}
+roi: >-
+  Value comes from contained refund contacts (fully loaded agent cost avoided), minus goodwill
+  leakage that the policy nodes prevent, minus HITL reviewer time for refunds of $50 or more.
+  Tokens are a small line item next to integration with OMS, CRM and payments. Second contacts
+  caused by wrong answers are subtracted, which is why replies are template-guarded and never
+  claim money moved before the provider confirms it.
+planes:
+  experience: web / app chat and email; channel passes customer id + email; replies are short, template-guarded, never expose policy IDs or fraud logic
+  agent: LangGraph StateGraph (classify -> verify -> order -> policy -> decide -> HITL -> refund -> reply) with MemorySaver checkpoints and interrupt()
+  knowledge: refund-policy corpus via shared ContextBuilder - chunk per rule, temporal validity (as-of delivery date), ACL (fraud rule internal-only), sanitizer
+  data: OMS orders (gold order header), CRM customer + case timeline, payment provider ledger - all via MCP through the tool gateway
+systems_of_record:
+  - {name: OMS, kind: mcp, contract: "oms.get_order / oms.mark_order_refunded", access: read_write}
+  - {name: CRM, kind: mcp, contract: "crm.verify_customer / crm.add_case_note", access: read_write}
+  - {name: Payment provider, kind: mcp, contract: "payments.issue_refund (provider-side idempotency)", access: write}
+knowledge:
+  corpora:
+    - name: refund-policy
+      owner: Jagadish Meduri (customer-care policy product)
+      acl: "RP-1..RP-6 everyone; RP-7 fraud rule only groups fraud-ops, refund-agent"
+      temporal: valid_from / valid_to per edition; retrieved as-of the order delivery date (2025 edition superseded)
+      refresh_sla: event-driven on policy publish; nightly hygiene
+      sensitivity: internal
+contracts:
+  mcp: [oms.get_order, oms.mark_order_refunded, crm.verify_customer, crm.add_case_note, payments.issue_refund]
+  a2a: []
+  notes: Single journey agent; a fraud domain agent would be the first A2A peer (today fraud review is a queue handoff).
+identities:
+  - identity: mi-refund-agent
+    allow: [oms.get_order, oms.mark_order_refunded, crm.verify_customer, crm.add_case_note, payments.issue_refund]
+stop_conditions:
+  - deterministic graph - no open-ended loops; every path ends in compose_reply
+  - payments.issue_refund quota 3 per run (gateway) and one refund per order (RP-3 + idempotency key refund:<order>)
+  - refunds >= $50, injected instructions or missing policy evidence stop at a human approval interrupt
+  - fraud indicators stop before any money-moving tool is reachable
+graph: refund_agent.graph:build_graph
+failure_playbook:
+  - node: classify_intent
+    success: intent label from the model
+    retry: fallback deployment via model circuit breaker
+    compensate: n/a (read-only)
+    degrade: keyword classifier when every model deployment is down
+    escalate: n/a - downstream nodes are deterministic
+  - node: verify_identity
+    success: CRM verifies email and OMS confirms order ownership
+    retry: gateway timeout + breaker per SOR
+    compensate: n/a (read-only)
+    degrade: n/a - never guess identity
+    escalate: OMS/CRM unavailable -> escalate to a human with an honest reason
+  - node: check_order
+    success: order loaded from OMS (schema-validated)
+    retry: gateway breaker
+    compensate: n/a (read-only)
+    degrade: n/a - never invent order state
+    escalate: OMS unavailable -> escalate
+  - node: check_refund_policy
+    success: deterministic rules + policy text retrieved as-of delivery date with citations
+    retry: n/a (local rules); retrieval errors are typed
+    compensate: n/a
+    degrade: retrieval down or rule missing -> known-policy cache citations and auto-refund disabled (routed to human approval)
+    escalate: prompt injection in customer text -> human approval regardless of amount
+  - node: human_approval
+    success: reviewer approves / rejects via Command(resume)
+    retry: durable - interrupt state survives restarts in the checkpointer
+    compensate: n/a
+    degrade: n/a
+    escalate: SLA timeout -> deny or queue, never silent pay (operational policy)
+  - node: issue_refund
+    success: provider refund + OMS flag + CRM note
+    retry: payments retried 3x with backoff; first CRM failure after money moved crashes to the checkpoint and the replay is deduped by the provider key
+    compensate: n/a - payment is idempotent, follow-up writes are queued not reversed
+    degrade: provider down -> refund queued (reply says not yet sent); OMS/CRM follow-ups queued to outbox
+    escalate: quota exceeded or repeated provider failure -> queued refund reviewed by payments ops
+  - node: notify_rejection
+    success: CRM note written
+    retry: n/a
+    compensate: n/a
+    degrade: CRM down -> note queued to outbox
+    escalate: n/a
+  - node: deny
+    success: denial recorded with policy citation
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: customer can reply to reach an agent (reply copy)
+  - node: fraud_review
+    success: case handed to fraud queue, CRM note
+    retry: n/a
+    compensate: n/a
+    degrade: CRM down -> note queued
+    escalate: always escalates to the fraud team (by design)
+  - node: escalate
+    success: handoff recorded
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: human agent queue
+  - node: compose_reply
+    success: model-written reply passing the output guard
+    retry: fallback deployment
+    compensate: n/a
+    degrade: vetted template when the model is down or the reply leaks internals
+    escalate: n/a
+chaos:
+  - {fault: model, node: classify_intent, exit: degrade, invariant: "same outcome via keyword classifier + template reply; exactly one refund"}
+  - {fault: retrieval, node: check_refund_policy, exit: degrade, invariant: "no auto refund; paused for human approval with cached policy citations"}
+  - {fault: "sor:oms", node: verify_identity, exit: escalate, invariant: "escalated; no money moved; nothing invented"}
+  - {fault: "sor:payments", node: issue_refund, exit: degrade, invariant: "refund queued with idempotency key; reply says not yet sent"}
+  - {fault: "sor:crm.add_case_note", node: issue_refund, exit: degrade, invariant: "worker replay deduped; money moved exactly once; CRM note queued"}
+  - {fault: "sor:crm.add_case_note*1", node: issue_refund, exit: retry, invariant: "transient CRM failure recovered by checkpoint replay; one refund"}
+  - {fault: jailbreak, node: check_refund_policy, exit: escalate, invariant: "injected instructions never auto-pay; human approval required"}
+eval:
+  golden: evals/golden.jsonl
+  suite: refund_agent.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.95"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    tool_error_rate: "<=0.05"
+    cost_per_task: "<=0.002"

@@ -13,6 +13,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from refund_agent.state import Intent
+from shared.resilience import ModelUnavailableError
 
 INTENTS: tuple[Intent, ...] = ("refund_request", "order_status", "complaint", "other")
 
@@ -45,13 +46,21 @@ def _keyword_intent(text: str) -> Intent:
     return "other"
 
 
-def classify_intent(llm: BaseChatModel, message: str) -> Intent:
-    raw = llm.invoke([SystemMessage(CLASSIFY_SYSTEM), HumanMessage(message)]).content
+def classify_intent_ex(llm: BaseChatModel, message: str) -> tuple[Intent, bool]:
+    """(intent, degraded). Degrades to the keyword classifier if every model is down."""
+    try:
+        raw = llm.invoke([SystemMessage(CLASSIFY_SYSTEM), HumanMessage(message)]).content
+    except ModelUnavailableError:
+        return _keyword_intent(message), True
     label = str(raw).strip().lower()
     for intent in INTENTS:
         if intent in label:
-            return intent
-    return _keyword_intent(message)  # guard: model returned junk
+            return intent, False
+    return _keyword_intent(message), False  # guard: model returned junk
+
+
+def classify_intent(llm: BaseChatModel, message: str) -> Intent:
+    return classify_intent_ex(llm, message)[0]
 
 
 _TEMPLATES = {
@@ -76,11 +85,18 @@ _TEMPLATES = {
         "Thanks for contacting us about order {order_id}. Your request needs an additional "
         "review before we can proceed; our team will contact you within 2 business days."
     ),
+    "refund_queued": (
+        "Thanks for your patience. Your refund for order {order_id} has been accepted and is "
+        "queued for processing (reference {reference}). We'll email you as soon as the money "
+        "has been sent; it has not been sent yet."
+    ),
 }
 
 
 def template_reply(facts: dict) -> str:
-    return _TEMPLATES[facts["next_action"]].format(**{"amount": 0.0, "refund_id": "", **facts})
+    return _TEMPLATES[facts["next_action"]].format(
+        **{"amount": 0.0, "refund_id": "", "reference": "", **facts}
+    )
 
 
 def mock_responder(messages: Sequence[BaseMessage]) -> str:
@@ -94,10 +110,20 @@ def mock_responder(messages: Sequence[BaseMessage]) -> str:
     return "[mock] unsupported task"
 
 
-def write_reply(llm: BaseChatModel, facts: dict) -> str:
-    raw = str(llm.invoke([SystemMessage(REPLY_SYSTEM), HumanMessage(json.dumps(facts))]).content)
+def write_reply_ex(llm: BaseChatModel, facts: dict) -> tuple[str, bool]:
+    """(reply, degraded). Degrades to the vetted template if every model is down."""
+    try:
+        raw = str(
+            llm.invoke([SystemMessage(REPLY_SYSTEM), HumanMessage(json.dumps(facts))]).content
+        )
+    except ModelUnavailableError:
+        return template_reply(facts), True
     reply = raw.strip()
     # Output guard: fall back to a vetted template if the model misbehaves.
     if not reply or len(reply) > MAX_REPLY_CHARS or any(w in reply for w in _FORBIDDEN_IN_REPLY):
-        return template_reply(facts)
-    return reply
+        return template_reply(facts), False
+    return reply, False
+
+
+def write_reply(llm: BaseChatModel, facts: dict) -> str:
+    return write_reply_ex(llm, facts)[0]

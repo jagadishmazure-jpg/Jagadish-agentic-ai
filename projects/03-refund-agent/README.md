@@ -155,3 +155,38 @@ behaves the same way; only the intent label and the wording of the reply come fr
    checkpointer)`) plus a deterministic mock LLM makes the whole suite run offline in under a
    second in CI. With a real model, I'd add an eval set for intent accuracy and reply tone, and
    track the guard-fallback rate as a production quality signal.
+
+## Doctrine compliance
+
+This agent meets the portfolio's production-readiness doctrine. The full card is in
+[`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml). It covers
+planes, systems of record, corpus + ACL, MCP contracts, stop conditions, the five-exit table
+per node, chaos scenarios, eval scores, KPIs and an ROI sketch.
+
+What the doctrine upgrade changed:
+
+- **Systems of record through MCP.** OMS (`get_order`, `mark_order_refunded`), CRM
+  (`verify_customer`, `add_case_note`) and payments (`issue_refund`) are MCP servers
+  (`shared/mcp_servers`). The graph reaches them only through a `ToolGateway`, which gives it
+  the `mi-refund-agent` identity, an allowlist, quotas, a breaker and schema validation.
+  `oms.get_order` payloads are validated into an `Order` model because tool output is
+  untrusted.
+- **Temporal + ACL policy retrieval.** Citations come from the shared `ContextBuilder`, which
+  retrieves the policy edition in force on the **delivery date**. The fraud rule is visible
+  only to fraud-ops and the refund agent. If retrieval is down, the node degrades: it cites
+  the known-policy cache and **disables auto-refund**, so the case goes to a human.
+- **Honest failure exits.** If the payment provider is down, the refund is queued with its
+  idempotency key and the reply says it hasn't been sent yet. If CRM fails after money moved,
+  the worker crashes to the checkpoint and replays the node; the provider dedupes the refund,
+  and a second failure queues the note. A prompt injection in the customer message forces
+  human approval. If every model is down, the agent uses the keyword classifier and template
+  replies.
+- **Tracing and a fallback model.** Every run emits OTel spans (graph, node, llm, tool) with
+  the identity, tokens and cost attached. The LLM is a primary → fallback chain with circuit
+  breakers.
+
+```bash
+python -m evals --project 03                       # golden set (12 cases) + thresholds
+pytest projects/03-refund-agent/tests/test_chaos.py  # kill model / retrieval / OMS / payments / CRM, inject jailbreak
+CHAOS_FAULTS=sor:payments python projects/03-refund-agent/run.py   # watch the degrade path
+```

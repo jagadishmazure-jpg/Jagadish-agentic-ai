@@ -28,6 +28,8 @@ def _show(title: str, result: dict) -> None:
     print(f"\n=== {title} ===")
     print("path:", " -> ".join(result["trace"]))
     print(json.dumps(result["final"], indent=2))
+    if result.get("exits"):
+        print("non-happy exits:", [(e["node"], e["exit"], e["reason"]) for e in result["exits"]])
 
 
 def main(argv: list[str] | None = None) -> None:

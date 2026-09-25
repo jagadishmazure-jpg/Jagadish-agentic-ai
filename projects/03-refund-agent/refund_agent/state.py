@@ -14,6 +14,7 @@ NextAction = Literal[
     "refund_rejected_by_reviewer",
     "escalated_to_agent",
     "fraud_review",
+    "refund_queued",
 ]
 Route = Literal["auto_refund", "human_approval", "deny", "fraud_review", "escalate"]
 
@@ -56,5 +57,8 @@ class RefundState(TypedDict, total=False):
     # accumulated across nodes (reducer = list concat)
     citations: Annotated[list[str], operator.add]
     trace: Annotated[list[str], operator.add]
+    exits: Annotated[list[dict[str, str]], operator.add]  # five-exit record per node
+    policy_source: str  # "retrieval" | "cache" (degraded)
+    injection_detected: bool
     # output
     final: dict[str, Any]

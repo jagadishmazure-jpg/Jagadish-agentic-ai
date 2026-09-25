@@ -97,6 +97,7 @@ class Services:
     crm: CRM = field(default_factory=CRM)
     audit: AuditLog = field(default_factory=AuditLog)
     today: date = field(default_factory=date.today)
+    outbox: list[dict[str, Any]] = field(default_factory=list)  # queued writes (async retry)
 
 
 def seed_services(today: date | None = None) -> Services:
