@@ -1,0 +1,31 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	rewrite_query(rewrite_query)
+	retrieve(retrieve)
+	grade_chunks(grade_chunks)
+	pack_context(pack_context)
+	generate_answer(generate_answer)
+	check_groundedness(check_groundedness)
+	finalize(finalize)
+	insufficient_evidence(insufficient_evidence)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> rewrite_query;
+	check_groundedness -.-> finalize;
+	check_groundedness -.-> insufficient_evidence;
+	generate_answer --> check_groundedness;
+	grade_chunks -.-> insufficient_evidence;
+	grade_chunks -.-> pack_context;
+	grade_chunks -.-> rewrite_query;
+	pack_context --> generate_answer;
+	retrieve --> grade_chunks;
+	rewrite_query --> retrieve;
+	finalize --> __end__;
+	insufficient_evidence --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
