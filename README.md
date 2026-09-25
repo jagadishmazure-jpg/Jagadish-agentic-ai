@@ -16,7 +16,7 @@ tests, and a README covering design trade-offs and interview talking points.
 | #  | Project | Business use case | Graph pattern | Status |
 |----|---------|-------------------|---------------|--------|
 | 01 | [policy-qa-rag](projects/01-policy-qa-rag) | Cited answers to HR/IT/expense policy questions | Corrective RAG: rewrite → retrieve → grade → retry → grounded answer | ✅ Built |
-| 02 | [ticket-triage](projects/02-ticket-triage) | Classify and route support tickets | Structured-output routing, `Send` fan-out | 📝 Planned |
+| 02 | [ticket-triage](projects/02-ticket-triage) | Classify and route support tickets | Router: structured output + confidence gate + repair retry + PII redaction | ✅ Built |
 | 03 | [refund-agent](projects/03-refund-agent) | Customer refunds with policy checks and approvals | Deterministic workflow + HITL `interrupt()` + idempotency | ✅ Built |
 | 04 | [sales-meeting-prep](projects/04-sales-meeting-prep) | Pre-call account brief for AEs | Parallel fan-out / fan-in | 📝 Planned |
 | 05 | [invoice-po-matching](projects/05-invoice-po-matching) | AP 3-way match and exception handling | Pipeline + exception subgraph + HITL | 📝 Planned |
@@ -62,6 +62,7 @@ pytest                     # all projects, offline, mock LLM
 ```bash
 python projects/03-refund-agent/run.py
 python projects/10-supply-chain-multi-agent/run.py
+python projects/02-ticket-triage/run.py
 python projects/01-policy-qa-rag/run.py
 ```
 

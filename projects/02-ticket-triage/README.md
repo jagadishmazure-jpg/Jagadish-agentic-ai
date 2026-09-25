@@ -1,18 +1,89 @@
-# 02 · Support Ticket Triage
+# 02 · Support Ticket Triage: router with a confidence gate
 
-> **Status:** planned (not built yet)
+> **Status:** ✅ Built. `pytest projects/02-ticket-triage` runs 12 offline tests, and `python run.py` runs the demo.
 
-Inbound support tickets arrive by email/chat in high volume. The agent classifies category, priority and sentiment, extracts entities (product, order id), deduplicates against open tickets, and routes to the right queue, sending low-confidence cases to a human.
+## Business problem
 
-**Graph pattern it teaches:** Classification + routing with structured output, confidence thresholds and a fan-out (Send API) for multi-label tickets.
+A support org gets thousands of tickets a day by email and chat. When a human reads each
+ticket just to decide *where it goes*, first response is slow, SLAs get missed, and critical
+outages sit in the same queue as feature requests. Automated triage has to:
 
-**Planned components:**
+- classify **intent, urgency, and product** consistently
+- route to the right queue with the right SLA, and page on-call for critical issues
+- **not guess** when it's unsure: ask the customer a clarifying question, or hand off to a human
+- keep **customer PII** (cards, SSNs, emails, phones) away from the LLM provider
 
-- Pydantic schemas for category / priority / entities
-- Classifier node with confidence score and human fallback below threshold
-- Duplicate detector against a mock ticket store
-- Parallel sub-classification via `Send` for multi-issue tickets
-- Mock helpdesk API (Zendesk/ServiceNow-like) for queue assignment
-- Batch evaluation with a confusion matrix
+## Graph
 
-Like every project in this repo, it will run offline with the shared mock LLM (`shared.llm.get_llm`) and optionally against Azure OpenAI / OpenAI via env vars.
+```mermaid
+flowchart TD
+    START([start]) --> R["redact_pii<br/>email · card (Luhn) · SSN · phone · IP"]
+    R --> C["classify 🤖<br/>JSON → TicketClassification"]
+    C --> V{"validate (Pydantic)<br/>+ confidence gate"}
+    V -- "invalid, repairs < 1" --> REP["repair 🤖<br/>errors fed back"]
+    REP --> V
+    V -- "invalid after repair" --> H["human_review"]
+    V -- "conf < 0.40 or intent=other" --> H
+    V -- "0.40 ≤ conf < 0.60" --> CL["clarify 🤖<br/>ask customer one question"]
+    V -- billing --> B[billing_queue]
+    V -- technical --> T[tech_support_queue]
+    V -- account_access --> A[account_security_queue]
+    V -- feature_request --> F[product_feedback_queue]
+    V -- cancellation --> RT[retention_queue]
+    B & T & A & F & RT & CL & H --> END([end])
+```
+
+The compiled graph exported by LangGraph is in [`graph.mmd`](graph.mmd).
+
+| File | What it holds |
+|------|---------------|
+| `ticket_triage/schema.py` | `TicketClassification` (Literal enums, bounded confidence), queues, SLAs, thresholds, `TriageResult` |
+| `ticket_triage/pii.py` | Regex plus Luhn-checksum redaction into placeholders (`[CARD_1]`) |
+| `ticket_triage/llm.py` | Classify, repair, and clarify prompts, plus a keyword-based deterministic mock |
+| `ticket_triage/graph.py` | Router graph, queue-handler factory, repair loop |
+
+## Design decisions
+
+- **Router pattern.** One classification, then conditional edges to specialised handlers. It's
+  cheaper and more predictable than an agent loop, because triage is a *decision*, not a task.
+  Each queue handler owns its own SLA and acknowledgement text. Critical urgency pages on-call
+  whatever the queue.
+- **Structured output with a validation-repair loop.** The model must return JSON matching a
+  strict Pydantic schema (enums, `0 ≤ confidence ≤ 1`, summary length). If validation fails,
+  the *exact validation errors* go back to the model in a repair prompt, **once**. If it fails
+  again, the ticket goes to a human. The loop is bounded, and the failure is visible in the
+  `reason`. With `with_structured_output` / JSON mode, this becomes the fallback path.
+- **The confidence gate has two thresholds.** At ≥ 0.60 the ticket is auto-routed. Between 0.40
+  and 0.60 the customer gets one clarifying question, which is cheaper than a human touch.
+  Below 0.40, or when the intent is `other`, a human decides. The thresholds are tuned from a
+  labelled set (precision per queue versus auto-route rate). In production I'd calibrate
+  self-reported confidence against logprobs or agreement between samples.
+- **PII redaction before the LLM.** Deterministic regex plus a Luhn checksum, so order numbers
+  aren't redacted as cards. Placeholders keep the text readable for classification. The
+  placeholder-to-value vault is **never** put in graph state, checkpoints, prompts, or logs.
+  In production you'd use Azure AI Language PII or Presidio for names and addresses.
+
+## How to run
+
+```bash
+python projects/02-ticket-triage/run.py     # 5 tickets: billing, critical outage, account, clarify, human
+pytest projects/02-ticket-triage
+```
+
+## Interview talking points
+
+1. **Router vs agent.** Triage is a classification problem with a fixed set of actions, so a
+   router gives predictable latency and cost, and it's easy to evaluate per queue. I'd save
+   agents for tasks that need open-ended tool use.
+2. **Reliable structured output.** Schema-first design: Literal enums, bounds, and one repair
+   pass fed with real validation errors, then escalation. I'd track the repair rate and
+   escalation rate as model-quality metrics.
+3. **Confidence is a product decision.** The two thresholds trade automation rate against
+   misroutes. I'd tune them on a labelled set, watch per-queue precision, and use clarifying
+   questions as the cheap middle path.
+4. **Privacy by design.** PII is stripped before the model boundary, the reversible mapping
+   never gets persisted, and a test asserts that no raw PII reaches any prompt. That test is
+   what a security review wants to see.
+5. **Operational metrics.** Auto-route rate, misroute rate (from agent re-queues), time to first
+   response, clarify-to-resolution conversion, and pages per week. Misroutes feed back into
+   the eval set.

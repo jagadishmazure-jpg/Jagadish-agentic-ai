@@ -34,7 +34,7 @@ addopts = "-q --import-mode=importlib"
 testpaths = ["shared", "projects"]
 # Project folders have hyphens (e.g. 03-refund-agent), so each project's
 # importable package lives one level down and is put on the path here.
-pythonpath = [".", "projects/03-refund-agent", "projects/10-supply-chain-multi-agent", "projects/01-policy-qa-rag"]
+pythonpath = [".", "projects/03-refund-agent", "projects/10-supply-chain-multi-agent", "projects/01-policy-qa-rag", "projects/02-ticket-triage"]
 
 [tool.ruff]
 line-length = 100
@@ -46,4 +46,4 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 ignore = ["RUF001"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["shared", "refund_agent", "supply_chain", "policy_qa"]
+known-first-party = ["shared", "refund_agent", "supply_chain", "policy_qa", "ticket_triage"]

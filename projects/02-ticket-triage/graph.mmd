@@ -1,0 +1,41 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	redact_pii(redact_pii)
+	classify(classify)
+	validate(validate)
+	repair(repair)
+	clarify(clarify)
+	human_review(human_review)
+	billing_queue(billing_queue)
+	tech_support_queue(tech_support_queue)
+	account_security_queue(account_security_queue)
+	product_feedback_queue(product_feedback_queue)
+	retention_queue(retention_queue)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> redact_pii;
+	classify --> validate;
+	redact_pii --> classify;
+	repair --> validate;
+	validate -.-> account_security_queue;
+	validate -.-> billing_queue;
+	validate -.-> clarify;
+	validate -.-> human_review;
+	validate -.-> product_feedback_queue;
+	validate -.-> repair;
+	validate -.-> retention_queue;
+	validate -.-> tech_support_queue;
+	account_security_queue --> __end__;
+	billing_queue --> __end__;
+	clarify --> __end__;
+	human_review --> __end__;
+	product_feedback_queue --> __end__;
+	retention_queue --> __end__;
+	tech_support_queue --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
