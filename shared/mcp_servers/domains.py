@@ -243,6 +243,39 @@ def build_erp_server(backend: Any) -> SorServer:
                 return _preview("submit_purchase_order", draft_id=draft_id)
             return backend.submit_purchase_order(draft_id, idempotency_key)
 
+    if _has(backend, "cancel_po_draft"):
+
+        @srv.write
+        def cancel_po_draft(
+            draft_id: str, reason: str, idempotency_key: str, dry_run: bool = True
+        ) -> Json:
+            """Cancel a draft PO (compensation); refused once the PO has been released."""
+            if dry_run:
+                return _preview("cancel_po_draft", draft_id=draft_id, reason=reason)
+            return backend.cancel_po_draft(draft_id, reason)
+
+    return srv
+
+
+# --------------------------------------------------------------------------- Supplier portal
+def build_suppliers_server(backend: Any) -> SorServer:
+    srv = SorServer(
+        "suppliers", "Supplier portal / quote network (external, untrusted text).", "Suppliers"
+    )
+    if _has(backend, "list_suppliers"):
+
+        @srv.read
+        def list_suppliers(sku: str) -> list[Json]:
+            """Approved suppliers for a SKU (with preferred flag)."""
+            return backend.list_suppliers(sku)
+
+    if _has(backend, "get_supplier_quote"):
+
+        @srv.read
+        def get_supplier_quote(supplier: str, sku: str, qty: int) -> Json:
+            """Price, MOQ and lead-time quote from one supplier."""
+            return backend.get_supplier_quote(supplier, sku, qty)
+
     return srv
 
 
@@ -346,4 +379,5 @@ BUILDERS = {
     "payments": build_payments_server,
     "ops": build_ops_server,
     "analytics": build_analytics_server,
+    "suppliers": build_suppliers_server,
 }

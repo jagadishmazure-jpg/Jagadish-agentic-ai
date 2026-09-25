@@ -1,6 +1,6 @@
 # 10 · Supply-Chain Multi-Agent: supervisor, specialists, critic, human approval
 
-> **Status:** ✅ Built. `pytest projects/10-supply-chain-multi-agent` runs 16 offline tests, and `python run.py` runs the demo.
+> **Status:** ✅ Built. `pytest projects/10-supply-chain-multi-agent` runs 23 offline tests, and `python run.py` runs the demo.
 
 ## Business problem
 
@@ -181,3 +181,30 @@ The tests cover:
    checkpointer, Teams approval cards, per-agent managed identities, and OpenTelemetry or
    LangSmith tracing. The in-process `Specialist.run` interface is the seam where the swap
    happens.
+
+## Doctrine compliance
+
+This agent meets the portfolio's production-readiness doctrine. The full card is in
+[`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml).
+
+What the doctrine upgrade changed:
+
+- **Systems of record behind MCP, one identity per agent.** Specialist tools keep their names
+  but now call MCP servers through scoped `ToolGateway`s (`supply_chain/sor.py`):
+  - demand → `analytics.get_measure` (certified `weekly_units` measure, not free SQL)
+  - inventory → `erp.get_stock`, `erp.get_open_purchase_orders`
+  - supplier → `suppliers.list_suppliers`, `suppliers.get_supplier_quote`, `erp.create_po_draft`
+  - orchestrator (`submit_po` only) → `erp.submit_purchase_order`, `erp.cancel_po_draft`
+- **Five exits per node.**
+  - Model down: supervisor falls back to the deterministic plan policy; demand/inventory use
+    their guard fallbacks; the supplier agent does deterministic cheapest-acceptable sourcing.
+  - ERP or semantic model down after retries: the run is deferred (`sor_unavailable`) instead
+    of planning on partial data.
+  - Release fails after approval: the draft is cancelled (compensation) and the buyer is told.
+  - Injected text in a supplier quote is neutralised by the gateway and recorded as an exit.
+- **Tracing and exit records.** OTel spans are on, and exits go to `state["exits"]`.
+
+```bash
+python -m evals --project 10
+pytest projects/10-supply-chain-multi-agent/tests/test_chaos.py
+```

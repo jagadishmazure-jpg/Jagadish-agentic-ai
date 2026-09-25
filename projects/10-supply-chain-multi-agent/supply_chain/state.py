@@ -12,7 +12,14 @@ from pydantic import BaseModel, Field
 AgentName = Literal["demand", "inventory", "supplier"]
 NextAgent = Literal["demand", "inventory", "supplier", "FINISH"]
 Outcome = Literal[
-    "po_submitted", "no_reorder", "po_rejected", "review_failed", "no_supplier", "halted_budget"
+    "po_submitted",
+    "no_reorder",
+    "po_rejected",
+    "review_failed",
+    "no_supplier",
+    "halted_budget",
+    "sor_unavailable",
+    "submit_failed",
 ]
 
 
@@ -73,4 +80,6 @@ class SupplyChainState(TypedDict, total=False):
     outcome: Outcome
     # audit trail: one entry per agent hop / supervisor decision
     hops: Annotated[list[dict[str, Any]], operator.add]
+    # five-exit trail: which non-success exit each node took (see doctrine.yaml)
+    exits: Annotated[list[dict[str, str]], operator.add]
     final: dict[str, Any]

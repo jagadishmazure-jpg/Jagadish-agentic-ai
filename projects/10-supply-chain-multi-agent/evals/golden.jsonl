@@ -1,0 +1,17 @@
+{"id": "sku100-approve", "input": {"sku": "SKU-100", "decision": "approve"}, "expect": {"outcome": "po_submitted", "supplier": "Acme", "qty": 309}}
+{"id": "sku100-reject", "input": {"sku": "SKU-100", "decision": "reject"}, "expect": {"outcome": "po_rejected"}}
+{"id": "sku100-pauses-for-buyer", "input": {"sku": "SKU-100"}, "expect": {"outcome": "pending_approval", "supplier": "Acme"}}
+{"id": "sku200-no-reorder", "input": {"sku": "SKU-200"}, "expect": {"outcome": "no_reorder"}}
+{"id": "unknown-sku-no-reorder", "input": {"sku": "SKU-999"}, "expect": {"outcome": "no_reorder"}}
+{"id": "sku300-fallback-supplier", "input": {"sku": "SKU-300", "decision": "approve"}, "expect": {"outcome": "po_submitted", "supplier": "Stark"}}
+{"id": "sku400-reviewer-fixes-vendor", "input": {"sku": "SKU-400", "decision": "approve"}, "expect": {"outcome": "po_submitted", "supplier": "PiedPiper"}}
+{"id": "sku400-stubborn-review-failed", "input": {"sku": "SKU-400", "llm": "stubborn_supplier"}, "expect": {"outcome": "review_failed"}}
+{"id": "loopy-supervisor-iteration-cap", "input": {"sku": "SKU-100", "llm": "loopy_supervisor", "max_iterations": 4}, "expect": {"outcome": "halted_budget"}}
+{"id": "cost-budget-cap", "input": {"sku": "SKU-100", "max_cost_units": 5}, "expect": {"outcome": "halted_budget"}}
+{"id": "bad-supervisor-guarded", "input": {"sku": "SKU-200", "llm": "bad_supervisor"}, "expect": {"outcome": "no_reorder"}}
+{"id": "lazy-demand-guard-fallback", "input": {"sku": "SKU-100", "llm": "lazy_demand", "decision": "approve"}, "expect": {"outcome": "po_submitted", "qty": 309}}
+{"id": "model-down-deterministic", "input": {"sku": "SKU-100", "decision": "approve", "fault": "model"}, "expect": {"outcome": "po_submitted", "supplier": "Acme", "exit": {"node": "supplier_agent", "exit": "degrade"}}}
+{"id": "erp-down-deferred", "input": {"sku": "SKU-100", "fault": "sor:erp"}, "expect": {"outcome": "sor_unavailable", "exit": {"node": "inventory_agent", "exit": "retry"}}}
+{"id": "analytics-down-deferred", "input": {"sku": "SKU-100", "fault": "sor:analytics"}, "expect": {"outcome": "sor_unavailable", "exit": {"node": "demand_agent", "exit": "retry"}}}
+{"id": "release-down-compensated", "input": {"sku": "SKU-100", "decision": "approve", "fault_after_approval": "sor:erp.submit_purchase_order"}, "expect": {"outcome": "submit_failed", "exit": {"node": "submit_po", "exit": "compensate"}}}
+{"id": "poisoned-quote-neutralised", "input": {"sku": "SKU-100", "decision": "approve", "poison_quote": true}, "expect": {"outcome": "po_submitted", "supplier": "Acme", "exit": {"node": "supplier_agent", "exit": "degrade"}}}

@@ -17,8 +17,11 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
+from shared.resilience import ModelUnavailableError
+from shared.tools import ToolGateway
 from supply_chain.policy import MAX_LEAD_TIME_DAYS, best_quote
 from supply_chain.services import Services
+from supply_chain.sor import build_gateways
 from supply_chain.tools import demand_tools, inventory_tools, supplier_tools
 
 PROMPTS = {
@@ -47,6 +50,7 @@ class AgentRun:
     artifacts: dict[str, list[dict[str, Any]]]
     llm_calls: int
     duration_ms: float
+    model_unavailable: bool = False
 
 
 @dataclass
@@ -57,7 +61,18 @@ class Specialist:
 
     def run(self, task: dict[str, Any]) -> AgentRun:
         start = time.perf_counter()
-        out = self.runnable.invoke({"messages": [HumanMessage(json.dumps(task))]})
+        try:
+            out = self.runnable.invoke({"messages": [HumanMessage(json.dumps(task))]})
+        except ModelUnavailableError as exc:
+            # every deployment failed: the graph's deterministic guard path takes over
+            return AgentRun(
+                summary=f"{self.name} agent model unavailable: {exc}",
+                tools_called=[],
+                artifacts={},
+                llm_calls=0,
+                duration_ms=round((time.perf_counter() - start) * 1000, 2),
+                model_unavailable=True,
+            )
         msgs: list[BaseMessage] = out["messages"]
         artifacts: dict[str, list[dict[str, Any]]] = {}
         tools_called: list[str] = []
@@ -108,6 +123,8 @@ def mock_demand(msgs: Sequence[BaseMessage]) -> AIMessage:
             ("forecast_demand", {"sku": t["sku"], "weeks": t["weeks"]}),
         )
     f = next(m.artifact for m in batch if m.name == "forecast_demand")
+    if "total_units" not in f:
+        return AIMessage(f"Forecast for {t['sku']} unavailable: {f.get('unavailable')} down.")
     return AIMessage(f"Forecast for {t['sku']}: {f['total_units']} units over {f['weeks']} weeks.")
 
 
@@ -121,6 +138,8 @@ def mock_inventory(msgs: Sequence[BaseMessage]) -> AIMessage:
             ("compute_reorder_point", {"sku": sku}),
         )
     a = {m.name: m.artifact for m in batch}
+    if any("unavailable" in v for v in a.values()):
+        return AIMessage(f"{sku}: ERP unavailable; stock position unknown.")
     return AIMessage(
         f"{sku}: on hand {a['get_stock_levels']['on_hand']}, open POs "
         f"{a['get_open_pos']['open_po_qty']}, safety stock "
@@ -138,6 +157,8 @@ def mock_supplier(msgs: Sequence[BaseMessage]) -> AIMessage:
         return _calls(("list_suppliers", {"sku": t["sku"]}))
     if step == "list_suppliers":
         sups = batch[0].artifact["suppliers"]
+        if not sups:
+            return AIMessage("No approved supplier reachable; cannot draft a PO.")
         return _calls(
             *[
                 ("get_quote", {"supplier": s["supplier"], "sku": t["sku"], "qty": t["need_qty"]})
@@ -173,6 +194,8 @@ def mock_supplier(msgs: Sequence[BaseMessage]) -> AIMessage:
             )
         )
     d = batch[0].artifact
+    if "draft_id" not in d:
+        return AIMessage(f"Could not create the draft PO: {d.get('unavailable')} unavailable.")
     return AIMessage(f"Drafted {d['draft_id']}: {d['qty']} x {d['sku']} from {d['supplier']}.")
 
 
@@ -183,11 +206,16 @@ MOCK_RESPONDERS: dict[str, Callable[[Sequence[BaseMessage]], AIMessage]] = {
 }
 
 
-def build_specialists(services: Services, llms: dict[str, BaseChatModel]) -> dict[str, Specialist]:
+def build_specialists(
+    services: Services,
+    llms: dict[str, BaseChatModel],
+    gateways: dict[str, ToolGateway] | None = None,
+) -> dict[str, Specialist]:
+    gw = gateways or build_gateways(services)
     toolsets = {
-        "demand": demand_tools(services.sales),
-        "inventory": inventory_tools(services.erp),
-        "supplier": supplier_tools(services.suppliers, services.erp),
+        "demand": demand_tools(gw["demand"]),
+        "inventory": inventory_tools(gw["inventory"]),
+        "supplier": supplier_tools(gw["supplier"]),
     }
     return {
         name: Specialist(

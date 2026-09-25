@@ -12,6 +12,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+class POAlreadyReleasedError(ValueError):
+    """Business error: the draft's state does not allow the requested transition."""
+
+
 class SalesWarehouse:
     def __init__(self, weekly_sales: dict[str, list[int]]):
         self._sales = weekly_sales
@@ -43,12 +47,23 @@ class Erp:
         self.drafts[draft["draft_id"]] = draft
         return dict(draft)
 
+    def cancel_draft(self, draft_id: str, reason: str) -> dict[str, Any]:
+        """Compensation for a draft that will not be released. Refused once submitted."""
+        draft = self.drafts[draft_id]
+        if draft["status"] == "submitted":
+            raise POAlreadyReleasedError(f"{draft_id} already released to the supplier")
+        draft.update(status="cancelled", cancel_reason=reason)
+        return dict(draft)
+
     def submit(self, *, idempotency_key: str, draft_id: str) -> dict[str, Any]:
         """Idempotent: the same key returns the original PO; a supplier never gets two."""
         self.submit_calls += 1
         if idempotency_key in self._by_key:
             return {**self._by_key[idempotency_key], "replayed": True}
+        if self.drafts[draft_id]["status"] == "cancelled":
+            raise POAlreadyReleasedError(f"{draft_id} was cancelled; raise a new draft")
         po = {**self.drafts[draft_id], "status": "submitted", "po_number": str(next(self._po_ids))}
+        self.drafts[draft_id]["status"] = "submitted"
         self._by_key[idempotency_key] = po
         self.submitted.append(po)
         return {**po, "replayed": False}
@@ -77,6 +92,7 @@ class SupplierNetwork:
                     "lead_time_days": s["lead_time_days"],
                     "moq": s["moq"],
                     "qty": max(qty, s["moq"]),
+                    **({"note": s["note"]} if s.get("note") else {}),
                 }
         return {"supplier": supplier, "available": False, "error": "unknown supplier"}
 

@@ -20,6 +20,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, Send, interrupt
 
+from shared.observability import install
+from shared.resilience import ModelUnavailableError, exit_record, with_fallback
+from shared.tools import SystemOfRecordUnavailableError
 from supply_chain import supervisor as sup
 from supply_chain.agents import MOCK_RESPONDERS, build_specialists
 from supply_chain.policy import (
@@ -28,12 +31,21 @@ from supply_chain.policy import (
     MAX_ITERATIONS,
     MAX_LEAD_TIME_DAYS,
     MAX_REVISIONS,
+    best_quote,
     need_qty,
 )
 from supply_chain.reviewer import review
-from supply_chain.services import Services
+from supply_chain.services import POAlreadyReleasedError, Services, seed_services
+from supply_chain.sor import build_gateways
 from supply_chain.state import FinalReport, Recommendation, RouteDecision, SupplyChainState
-from supply_chain.tools import forecast_from_history
+from supply_chain.tools import (
+    create_draft,
+    fetch_history,
+    fetch_open_pos,
+    fetch_stock,
+    forecast_from_history,
+    get_quote_payload,
+)
 
 AGENT_NODES = {
     "demand": "demand_agent",
@@ -56,15 +68,18 @@ def _step(config: RunnableConfig) -> int:
 
 
 def build_graph(
-    services: Services,
+    services: Services | None = None,
     llms: dict[str, BaseChatModel] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
     *,
     max_iterations: int = MAX_ITERATIONS,
     max_cost_units: int = MAX_COST_UNITS,
 ):
-    llms = {**default_llms(), **(llms or {})}
-    specialists = build_specialists(services, llms)
+    install()
+    services = services or seed_services()
+    llms = {k: with_fallback(v) for k, v in {**default_llms(), **(llms or {})}.items()}
+    gateways = build_gateways(services)
+    specialists = build_specialists(services, llms, gateways)
 
     def hop(config, agent, started, **extra) -> dict[str, Any]:
         return {
@@ -91,9 +106,26 @@ def build_graph(
                 "outcome": "halted_budget",
                 "hops": [hop(config, "supervisor", t0, decision="FINISH", reason=d.reason)],
             }
-        d, overridden = sup.decide(llms["supervisor"], state)
+        down = state.get("slots", {}).get("sor_unavailable")
+        if down:
+            reason = f"{down} unavailable: plan deferred to the next planning run"
+            return {
+                "iterations": it,
+                "route": RouteDecision(next_agent="FINISH", reason=reason).model_dump(),
+                "outcome": "sor_unavailable",
+                "hops": [hop(config, "supervisor", t0, decision="FINISH", reason=reason)],
+            }
+        exits: list[dict[str, str]] = []
+        try:
+            d, overridden = sup.decide(llms["supervisor"], state)
+        except ModelUnavailableError:
+            fb = sup.plan_next(sup.status(state))
+            d = fb.model_copy(update={"reason": f"guard: model unavailable; {fb.reason}"})
+            overridden = True
+            exits.append(exit_record("supervisor", "degrade", "model down: deterministic routing"))
         targets = [d.next_agent, *d.parallel]
         return {
+            "exits": exits,
             "iterations": it,
             "cost_units": 1,
             "route": d.model_dump(),
@@ -144,25 +176,45 @@ def build_graph(
         run = specialists["demand"].run(
             {"task": "forecast demand", "sku": state["sku"], "weeks": weeks}
         )
-        found = run.artifacts.get("forecast_demand")
+        found = [f for f in run.artifacts.get("forecast_demand", []) if "total_units" in f]
+        exits = []
+        if run.model_unavailable:
+            exits.append(exit_record("demand_agent", "degrade", "model down: SMA forecast"))
         if found:
             forecast = {**found[-1], "source": "demand_agent.forecast_demand"}
         else:  # guard: the LLM skipped its tool -> compute deterministically, flag provenance
-            h = services.sales.history(state["sku"])
+            try:
+                h = fetch_history(gateways["demand"], state["sku"])
+            except SystemOfRecordUnavailableError:
+                exits.append(exit_record("demand_agent", "retry", "analytics down: next run"))
+                slots = {"forecast": None, "sor_unavailable": "analytics"}
+                return agent_update(config, "demand", run, slots, t0) | {"exits": exits}
             forecast = {
                 **forecast_from_history(h, weeks),
                 "weeks": weeks,
                 "source": "demand_agent.guard_fallback",
             }
-        return agent_update(config, "demand", run, {"forecast": forecast}, t0)
+        return agent_update(config, "demand", run, {"forecast": forecast}, t0) | {"exits": exits}
 
     def inventory_agent(state: SupplyChainState, config: RunnableConfig) -> dict[str, Any]:
         t0 = time.perf_counter()
         sku = state["sku"]
         run = specialists["inventory"].run({"task": "stock position", "sku": sku})
-        a = {k: v[-1] for k, v in run.artifacts.items()}
-        erp_stock = services.erp.stock(sku) or {}
+        a = {k: v[-1] for k, v in run.artifacts.items() if "unavailable" not in v[-1]}
         guard = "inventory_agent.guard_fallback"
+        exits = []
+        if run.model_unavailable:
+            exits.append(exit_record("inventory_agent", "degrade", "model down: direct ERP read"))
+        erp_stock: dict[str, Any] = {}
+        fb_open_qty = 0
+        if not {"get_stock_levels", "get_open_pos", "compute_reorder_point"} <= a.keys():
+            try:  # guard fallback reads the ERP directly through the same scoped gateway
+                erp_stock = fetch_stock(gateways["inventory"], sku)
+                fb_open_qty = sum(p["qty"] for p in fetch_open_pos(gateways["inventory"], sku))
+            except SystemOfRecordUnavailableError:
+                exits.append(exit_record("inventory_agent", "retry", "ERP down: next run"))
+                slots = {"stock": None, "sor_unavailable": "erp"}
+                return agent_update(config, "inventory", run, slots, t0) | {"exits": exits}
 
         def pick(tool: str, key: str, fallback: Any) -> tuple[Any, str]:
             if tool in a:
@@ -170,9 +222,7 @@ def build_graph(
             return fallback, guard
 
         on_hand, s1 = pick("get_stock_levels", "on_hand", erp_stock.get("on_hand", 0))
-        open_qty, s2 = pick(
-            "get_open_pos", "open_po_qty", sum(p["qty"] for p in services.erp.open_pos(sku))
-        )
+        open_qty, s2 = pick("get_open_pos", "open_po_qty", fb_open_qty)
         safety, s3 = pick("compute_reorder_point", "safety_stock", erp_stock.get("safety_stock", 0))
         rop, _ = pick("compute_reorder_point", "reorder_point", erp_stock.get("reorder_point", 0))
         stock = {
@@ -182,7 +232,7 @@ def build_graph(
             "reorder_point": rop,
             "sources": {"on_hand": s1, "open_po_qty": s2, "safety_stock": s3},
         }
-        return agent_update(config, "inventory", run, {"stock": stock}, t0)
+        return agent_update(config, "inventory", run, {"stock": stock}, t0) | {"exits": exits}
 
     def supplier_agent(state: SupplyChainState, config: RunnableConfig) -> dict[str, Any]:
         t0 = time.perf_counter()
@@ -198,11 +248,20 @@ def build_graph(
             "required_supplier": feedback.get("expected_supplier"),
         }
         run = specialists["supplier"].run(task)
+        exits = []
+        if run.model_unavailable:
+            run = deterministic_sourcing(run, task)
+            exits.append(
+                exit_record("supplier_agent", "degrade", "model down: cheapest acceptable")
+            )
         quotes = run.artifacts.get("get_quote", [])
-        drafts = run.artifacts.get("draft_purchase_order", [])
+        drafts = [d for d in run.artifacts.get("draft_purchase_order", []) if "draft_id" in d]
+        if any(q.get("injection_neutralised") for q in quotes):
+            exits.append(exit_record("supplier_agent", "degrade", "supplier text neutralised"))
         new_slots: dict[str, Any] = {"quotes": quotes}
         if not drafts:
             new_slots |= {"sourcing_failed": True, "recommendation": None}
+            exits.append(exit_record("supplier_agent", "escalate", "no draft: buyer notified"))
         else:
             d = drafts[-1]
             q = next((x for x in quotes if x["supplier"] == d["supplier"]), {})
@@ -227,7 +286,39 @@ def build_graph(
             )
             new_slots |= {"recommendation": rec.model_dump(), "sourcing_failed": False}
         unavailable = [q["supplier"] for q in quotes if not q.get("available")]
-        return agent_update(config, "supplier", run, new_slots, t0, unavailable=unavailable)
+        return agent_update(config, "supplier", run, new_slots, t0, unavailable=unavailable) | {
+            "exits": exits
+        }
+
+    def deterministic_sourcing(run: Any, task: dict[str, Any]) -> Any:
+        """Degrade path when every model deployment is down: the same tools, same policy
+        (cheapest acceptable quote, reviewer's pick if any), no LLM."""
+        gw, sku, need = gateways["supplier"], task["sku"], task["need_qty"]
+        artifacts: dict[str, list[dict[str, Any]]] = {"get_quote": []}
+        called = ["list_suppliers"]
+        try:
+            sups = gw.call("suppliers", "list_suppliers", sku=sku)
+        except SystemOfRecordUnavailableError:
+            sups = []
+        for s in sups:
+            artifacts["get_quote"].append(get_quote_payload(gw, s["supplier"], sku, need))
+            called.append("get_quote")
+        by_name = {q["supplier"]: q for q in artifacts["get_quote"] if q.get("available")}
+        pick = by_name.get(task.get("required_supplier") or "") or best_quote(
+            artifacts["get_quote"]
+        )
+        if pick:
+            called.append("draft_purchase_order")
+            try:
+                d = create_draft(
+                    gw, pick["supplier"], sku, max(need, pick["moq"]), pick["unit_price"]
+                )
+                artifacts["draft_purchase_order"] = [d]
+            except SystemOfRecordUnavailableError:
+                pass
+        run.tools_called, run.artifacts = called, artifacts
+        run.summary = f"deterministic sourcing: {pick['supplier'] if pick else 'no supplier'}"
+        return run
 
     # ---- reviewer / critic ------------------------------------------------------------
     def reviewer(state: SupplyChainState, config: RunnableConfig) -> Command:
@@ -274,7 +365,17 @@ def build_graph(
     def submit_po(state: SupplyChainState, config: RunnableConfig) -> dict[str, Any]:
         t0 = time.perf_counter()
         draft_id = state["slots"]["recommendation"]["draft_id"]
-        po = services.erp.submit(idempotency_key=f"po-submit:{draft_id}", draft_id=draft_id)
+        gw = gateways["orchestrator"]
+        try:
+            po = gw.call(
+                "erp",
+                "submit_purchase_order",
+                draft_id=draft_id,
+                idempotency_key=f"po-submit:{draft_id}",
+                dry_run=False,
+            )
+        except SystemOfRecordUnavailableError as exc:
+            return compensate_submit(state, config, t0, draft_id, exc)
         services.notifier.send(f"PO {po['po_number']} submitted to {po['supplier']}")
         return {
             "submission": po,
@@ -282,6 +383,31 @@ def build_graph(
             "hops": [
                 hop(config, "submit_po", t0, po_number=po["po_number"], replayed=po["replayed"])
             ],
+        }
+
+    def compensate_submit(state, config, t0, draft_id: str, exc: Exception) -> dict[str, Any]:
+        """ERP release failed after retries: cancel the draft (undo the partial side effect)
+        so no stale draft can be released later; the buyer re-plans on the next run."""
+        gw = gateways["orchestrator"]
+        try:
+            gw.call(
+                "erp",
+                "cancel_po_draft",
+                draft_id=draft_id,
+                reason=f"release failed: {exc}",
+                idempotency_key=f"po-cancel:{draft_id}",
+                dry_run=False,
+            )
+            ex = exit_record("submit_po", "compensate", f"release failed: {draft_id} cancelled")
+        except POAlreadyReleasedError:
+            ex = exit_record("submit_po", "escalate", "ERP says released: buyer reconciles")
+        except SystemOfRecordUnavailableError:
+            ex = exit_record("submit_po", "escalate", "ERP down: buyer cancels draft manually")
+        services.notifier.send(f"PO release for {draft_id} failed ({ex['exit']}): {ex['reason']}")
+        return {
+            "outcome": "submit_failed",
+            "exits": [ex],
+            "hops": [hop(config, "submit_po", t0, error=str(exc), exit=ex["exit"])],
         }
 
     def finalize(state: SupplyChainState, config: RunnableConfig) -> dict[str, Any]:
@@ -300,6 +426,10 @@ def build_graph(
             "escalated to a buyer.",
             "no_supplier": f"No acceptable supplier quote for {state['sku']}; buyer notified.",
             "halted_budget": f"Stopped planning {state['sku']}: iteration/cost budget exhausted.",
+            "sor_unavailable": f"Planning for {state['sku']} deferred: a system of record was "
+            "unavailable after retries; nothing drafted.",
+            "submit_failed": f"PO release for {state['sku']} failed; draft compensated and the "
+            "buyer notified. Re-plan on the next run.",
         }
         report = FinalReport(
             sku=state["sku"],
@@ -333,4 +463,4 @@ def build_graph(
         g.add_edge(node, "supervisor")
     g.add_edge("submit_po", "finalize")
     g.add_edge("finalize", END)
-    return g.compile(checkpointer=checkpointer or MemorySaver())
+    return g.compile(checkpointer=checkpointer or MemorySaver(), name="supply_chain")

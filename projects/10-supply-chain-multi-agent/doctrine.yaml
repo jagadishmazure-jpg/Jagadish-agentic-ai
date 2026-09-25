@@ -1,0 +1,119 @@
+project: 10-supply-chain-multi-agent
+title: Supply-chain replenishment team (supervisor, specialists, critic, human approval)
+owner: Jagadish Meduri
+industry: Manufacturing / distribution (supply chain, procurement)
+summary: >-
+  A supervisor routes a demand agent and an inventory agent in parallel, then a sourcing agent
+  that drafts one purchase order. A deterministic reviewer checks quantity, lead time, vendor
+  choice and the provenance of every number, a buyer approves, and only then does the
+  orchestrator release the PO (idempotently) in the ERP.
+maturity:
+  level: 4
+  rationale: multi-agent write path with per-agent least-privilege MCP identities, deterministic critic, human approval before release, idempotent release with compensation
+  next_rung: move the demand agent behind A2A to a lakehouse-native forecasting agent; supervised auto-release for low-value repeat POs once review pass rate and buyer overrides stay green
+kpis:
+  - {name: Planner time per replenishment decision, target: "-60% vs manual three-screen process", measure: "time from trigger to buyer decision (interrupt -> resume)"}
+  - {name: Cheapest-acceptable vendor rate, target: ">= 95% of released POs", measure: "reviewer pass on vendor rule / buyer overrides"}
+  - {name: Stockouts on agent-planned SKUs, target: "-20% vs prior quarter", measure: "stockout days per SKU (inventory gold)"}
+  - {name: Duplicate or unapproved POs, target: "0", measure: "ERP release log vs approvals (idempotency keys)"}
+roi: >-
+  Value is planner hours saved, lower unit cost from choosing the cheapest acceptable quote
+  instead of the habitual vendor, and fewer stockouts and expedites. Subtract token cost (small:
+  mostly deterministic tools) and buyer review time. Duplicate-PO and wrong-vendor risk is the
+  main downside, which the reviewer, approval gate and idempotent release exist to remove.
+planes:
+  experience: buyer approval step (interrupt payload with recommendation, review result and per-number citations); buyer channel notification after release
+  agent: LangGraph supervisor graph - supervisor (LLM + guards) fans out demand/inventory in parallel (Send), then supplier; reviewer critic; human_approval interrupt; submit_po
+  knowledge: none at runtime (procurement policy and planning math are deterministic code); supplier quote text is treated as untrusted and sanitised
+  data: certified semantic model (weekly_units measure), SAP-like ERP (stock, open POs, PO drafts, release, cancel) and supplier portal via MCP, one scoped gateway per agent
+systems_of_record:
+  - {name: Sales semantic model, kind: semantic_model, contract: "analytics.get_measure(weekly_units, sku, week)", access: read}
+  - {name: ERP (SAP-like), kind: mcp, contract: "erp.get_stock, erp.get_open_purchase_orders (read); erp.create_po_draft, erp.submit_purchase_order, erp.cancel_po_draft (write, idempotent)", access: read_write}
+  - {name: Supplier portal, kind: mcp, contract: "suppliers.list_suppliers, suppliers.get_supplier_quote (read, external text)", access: read}
+knowledge:
+  corpora: []
+  notes: No retrieval corpus. Numbers flow as typed tool artifacts, never through LLM text, and every number in the recommendation carries the agent/tool that produced it.
+contracts:
+  mcp:
+    - "analytics.get_measure(measure, entity, grain) -> {values}"
+    - "erp.get_stock(sku) -> Stock"
+    - "erp.get_open_purchase_orders(sku) -> list[PO]"
+    - "erp.create_po_draft(po, idempotency_key, dry_run) -> Draft"
+    - "erp.submit_purchase_order(draft_id, idempotency_key, dry_run) -> PO (ERP dedupes on key)"
+    - "erp.cancel_po_draft(draft_id, reason, idempotency_key, dry_run) -> Draft"
+    - "suppliers.list_suppliers(sku) -> list[Supplier]"
+    - "suppliers.get_supplier_quote(supplier, sku, qty) -> Quote"
+  a2a: []
+  notes: Specialist.run is the only interface the supervisor uses, so the demand agent can become an A2A client to a lakehouse agent without touching the graph (not implemented here).
+identities:
+  - {identity: mi-demand-planner, allow: [analytics.get_measure]}
+  - {identity: mi-inventory-reader, allow: [erp.get_stock, erp.get_open_purchase_orders]}
+  - {identity: mi-sourcing-drafter, allow: [suppliers.list_suppliers, suppliers.get_supplier_quote, erp.create_po_draft]}
+  - {identity: mi-po-releaser, allow: [erp.submit_purchase_order, erp.cancel_po_draft]}
+stop_conditions:
+  - supervisor turn cap (8) and cost budget (60 LLM + tool calls) -> halted_budget
+  - reviewer can send the supplier agent back once; a second failure escalates to a buyer
+  - no agent has a release tool; release happens only in submit_po after human approval
+  - a system of record down after retries ends the run (deferred) instead of planning on partial data
+graph: supply_chain.graph:build_graph
+failure_playbook:
+  - node: supervisor
+    success: LLM route accepted by the prerequisite guards
+    retry: fallback deployment
+    compensate: n/a (routing only)
+    degrade: invalid/unparseable route or models down -> deterministic plan policy; system of record down -> finish as deferred
+    escalate: n/a (budget exhaustion ends the run as halted_budget)
+  - node: demand_agent
+    success: forecast from the forecast_demand tool (semantic model)
+    retry: gateway backoff; analytics still down -> deferred to next planning run
+    compensate: n/a (read-only)
+    degrade: agent skipped its tool or model down -> deterministic SMA forecast, provenance flagged guard_fallback
+    escalate: n/a
+  - node: inventory_agent
+    success: stock, open POs and safety stock from ERP tools
+    retry: gateway backoff; ERP still down -> deferred to next planning run
+    compensate: n/a (read-only)
+    degrade: agent skipped tools or model down -> direct ERP read through the same scoped gateway
+    escalate: n/a
+  - node: supplier_agent
+    success: one draft PO with quotes as evidence
+    retry: gateway backoff on quote/draft calls
+    compensate: n/a (a draft is not sent; cancelled later if release fails)
+    degrade: model down -> deterministic cheapest-acceptable sourcing; injected supplier text neutralised
+    escalate: no acceptable quote or draft failed -> buyer notified (no_supplier)
+  - node: reviewer
+    success: recommendation passes quantity, lead-time, vendor and citation checks
+    retry: one revision loop back to supplier_agent with the reviewer's issues
+    compensate: n/a
+    degrade: n/a
+    escalate: fails twice -> buyer (review_failed)
+  - node: human_approval
+    success: buyer approves
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: is the human gate; reject -> po_rejected, nothing released
+  - node: submit_po
+    success: PO released once (idempotency key po-submit:<draft>); replay after a crash returns the same PO
+    retry: gateway backoff; crash after release -> checkpoint replay is deduped by the ERP
+    compensate: release still failing -> draft cancelled (erp.cancel_po_draft) and buyer notified
+    degrade: n/a
+    escalate: cancel refused (already released) or ERP fully down -> buyer reconciles manually
+  - node: finalize
+    success: FinalReport with outcome, citations and hop count
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: n/a
+chaos:
+  - {fault: model, node: supervisor, exit: degrade, invariant: "deterministic routing + sourcing; same Acme PO released exactly once after approval"}
+  - {fault: "sor:erp", node: inventory_agent, exit: retry, invariant: "ERP down -> run deferred; no draft created, nothing released"}
+  - {fault: "sor:erp.submit_purchase_order", node: submit_po, exit: compensate, invariant: "release fails after approval -> draft cancelled, nothing released, buyer notified"}
+  - {fault: jailbreak, node: supplier_agent, exit: degrade, invariant: "injected quote text neutralised before any agent/reviewer sees it; PO still reviewed and approved"}
+eval:
+  golden: evals/golden.jsonl
+  suite: supply_chain.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.9"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.003"
