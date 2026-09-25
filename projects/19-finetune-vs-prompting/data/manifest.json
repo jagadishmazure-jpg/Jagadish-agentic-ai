@@ -1,0 +1,65 @@
+{
+  "raw": 636,
+  "pii_redactions": {
+    "ACCOUNT": 331,
+    "ADDRESS": 385,
+    "EMAIL": 309,
+    "NAME": 338,
+    "PHONE": 318,
+    "SSN": 332
+  },
+  "exact_duplicates": 19,
+  "label_conflicts": 0,
+  "leakage_dropped": {
+    "val": 0,
+    "test": 1
+  },
+  "counts": {
+    "train": 437,
+    "val": 87,
+    "test": 92
+  },
+  "label_counts": {
+    "train": {
+      "appraisal": 45,
+      "bank_statement": 45,
+      "gift_letter": 45,
+      "homeowners_insurance": 42,
+      "pay_stub": 47,
+      "purchase_agreement": 40,
+      "tax_return": 43,
+      "title_commitment": 44,
+      "verification_of_employment": 37,
+      "w2": 49
+    },
+    "val": {
+      "appraisal": 8,
+      "bank_statement": 4,
+      "gift_letter": 11,
+      "homeowners_insurance": 11,
+      "pay_stub": 4,
+      "purchase_agreement": 10,
+      "tax_return": 12,
+      "title_commitment": 9,
+      "verification_of_employment": 12,
+      "w2": 6
+    },
+    "test": {
+      "appraisal": 7,
+      "bank_statement": 11,
+      "gift_letter": 7,
+      "homeowners_insurance": 11,
+      "pay_stub": 9,
+      "purchase_agreement": 10,
+      "tax_return": 6,
+      "title_commitment": 9,
+      "verification_of_employment": 11,
+      "w2": 11
+    }
+  },
+  "sha256": {
+    "train": "74c500839168fd68e889bfb47bfb243d5122c9b5e32e68fb57094fccf97a448f",
+    "val": "27076bef8cc334480942e103b3753817ad81074eec97cacf2b9ad2fb2c3a72c2",
+    "test": "bbafe1e8cb7f0885c2a9649d5e68d295da271bdc06aa7a087c03960bed55fed0"
+  }
+}

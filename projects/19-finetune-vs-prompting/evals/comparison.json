@@ -1,0 +1,122 @@
+{
+  "task": "mortgage document type classification (10 labels)",
+  "dataset": {
+    "counts": {
+      "train": 437,
+      "val": 87,
+      "test": 92
+    },
+    "sha256": "384bd8c3f124ec69"
+  },
+  "training": {
+    "seconds": 0.96,
+    "examples": 437,
+    "features": 2828,
+    "hyperparams": {
+      "C": 4.0,
+      "min_df": 2,
+      "max_iter": 2000,
+      "seed": 19
+    }
+  },
+  "versions": {
+    "baseline": "prompt-0b9ecd13",
+    "finetuned": "ft-98565702"
+  },
+  "results": {
+    "val": {
+      "baseline": {
+        "n": 87,
+        "accuracy": 0.6437,
+        "macro_f1": 0.7394,
+        "per_class_f1": {
+          "bank_statement": 0.75,
+          "pay_stub": 0.6667,
+          "w2": 0.5,
+          "tax_return": 0.7368,
+          "appraisal": 0.6667,
+          "purchase_agreement": 0.9474,
+          "homeowners_insurance": 0.4286,
+          "gift_letter": 0.9,
+          "verification_of_employment": 0.8571,
+          "title_commitment": 0.9412
+        },
+        "latency_ms_p50": 0.242,
+        "latency_ms_p95": 2.05,
+        "input_tokens_per_call": 567.0,
+        "output_tokens_per_call": 10.6
+      },
+      "finetuned": {
+        "n": 87,
+        "accuracy": 0.9885,
+        "macro_f1": 0.9845,
+        "per_class_f1": {
+          "bank_statement": 0.8889,
+          "pay_stub": 1.0,
+          "w2": 1.0,
+          "tax_return": 0.9565,
+          "appraisal": 1.0,
+          "purchase_agreement": 1.0,
+          "homeowners_insurance": 1.0,
+          "gift_letter": 1.0,
+          "verification_of_employment": 1.0,
+          "title_commitment": 1.0
+        },
+        "latency_ms_p50": 0.101,
+        "latency_ms_p95": 0.139,
+        "input_tokens_per_call": 55.0,
+        "output_tokens_per_call": 3.4
+      }
+    },
+    "test": {
+      "baseline": {
+        "n": 92,
+        "accuracy": 0.6413,
+        "macro_f1": 0.7569,
+        "per_class_f1": {
+          "bank_statement": 0.9,
+          "pay_stub": 0.8,
+          "w2": 0.7059,
+          "tax_return": 1.0,
+          "appraisal": 0.5455,
+          "purchase_agreement": 0.8421,
+          "homeowners_insurance": 0.5333,
+          "gift_letter": 0.6,
+          "verification_of_employment": 0.8421,
+          "title_commitment": 0.8
+        },
+        "latency_ms_p50": 0.22,
+        "latency_ms_p95": 0.35,
+        "input_tokens_per_call": 570.0,
+        "output_tokens_per_call": 10.5
+      },
+      "finetuned": {
+        "n": 92,
+        "accuracy": 0.9674,
+        "macro_f1": 0.9632,
+        "per_class_f1": {
+          "bank_statement": 1.0,
+          "pay_stub": 0.9474,
+          "w2": 0.9524,
+          "tax_return": 1.0,
+          "appraisal": 0.8571,
+          "purchase_agreement": 0.9524,
+          "homeowners_insurance": 1.0,
+          "gift_letter": 0.9231,
+          "verification_of_employment": 1.0,
+          "title_commitment": 1.0
+        },
+        "latency_ms_p50": 0.098,
+        "latency_ms_p95": 0.142,
+        "input_tokens_per_call": 58.0,
+        "output_tokens_per_call": 3.3
+      }
+    }
+  },
+  "gate": {
+    "split": "val",
+    "passed": true,
+    "problems": []
+  },
+  "champion": "ft-98565702"
+}

@@ -1,0 +1,151 @@
+{
+  "entries": {
+    "prompt-0b9ecd13": {
+      "version": "prompt-0b9ecd13",
+      "kind": "prompt",
+      "sha256": "0b9ecd134cffd5fd74b0d1893c74a01c43c84a6d76eb16e8a82a1e3973289050",
+      "created_at": "2026-09-25T22:34:22+00:00",
+      "stage": "archived",
+      "base_model": "mock-chat-model (offline stand-in for the base deployment)",
+      "dataset_sha256": "",
+      "dataset_checks_passed": true,
+      "hyperparams": {},
+      "metrics": {
+        "val": {
+          "n": 87,
+          "accuracy": 0.6437,
+          "macro_f1": 0.7394,
+          "per_class_f1": {
+            "bank_statement": 0.75,
+            "pay_stub": 0.6667,
+            "w2": 0.5,
+            "tax_return": 0.7368,
+            "appraisal": 0.6667,
+            "purchase_agreement": 0.9474,
+            "homeowners_insurance": 0.4286,
+            "gift_letter": 0.9,
+            "verification_of_employment": 0.8571,
+            "title_commitment": 0.9412
+          },
+          "latency_ms_p50": 0.242,
+          "latency_ms_p95": 2.05,
+          "input_tokens_per_call": 567.0,
+          "output_tokens_per_call": 10.6
+        },
+        "test": {
+          "n": 92,
+          "accuracy": 0.6413,
+          "macro_f1": 0.7569,
+          "per_class_f1": {
+            "bank_statement": 0.9,
+            "pay_stub": 0.8,
+            "w2": 0.7059,
+            "tax_return": 1.0,
+            "appraisal": 0.5455,
+            "purchase_agreement": 0.8421,
+            "homeowners_insurance": 0.5333,
+            "gift_letter": 0.6,
+            "verification_of_employment": 0.8421,
+            "title_commitment": 0.8
+          },
+          "latency_ms_p50": 0.22,
+          "latency_ms_p95": 0.35,
+          "input_tokens_per_call": 570.0,
+          "output_tokens_per_call": 10.5
+        }
+      },
+      "notes": "rubric + 3-shot"
+    },
+    "ft-98565702": {
+      "version": "ft-98565702",
+      "kind": "finetuned",
+      "sha256": "98565702cded9122b1ec8a2a88536cf8f4b648b3de61f1d0522ac4ae604ef926",
+      "created_at": "2026-09-25T22:34:24+00:00",
+      "stage": "champion",
+      "base_model": "local-linear-head",
+      "dataset_sha256": "384bd8c3f124ec699ab26216b7a93f96450359ec9ce33f483b58ab4471123e21",
+      "dataset_checks_passed": true,
+      "hyperparams": {
+        "C": 4.0,
+        "min_df": 2,
+        "max_iter": 2000,
+        "seed": 19
+      },
+      "metrics": {
+        "val": {
+          "n": 87,
+          "accuracy": 0.9885,
+          "macro_f1": 0.9845,
+          "per_class_f1": {
+            "bank_statement": 0.8889,
+            "pay_stub": 1.0,
+            "w2": 1.0,
+            "tax_return": 0.9565,
+            "appraisal": 1.0,
+            "purchase_agreement": 1.0,
+            "homeowners_insurance": 1.0,
+            "gift_letter": 1.0,
+            "verification_of_employment": 1.0,
+            "title_commitment": 1.0
+          },
+          "latency_ms_p50": 0.101,
+          "latency_ms_p95": 0.139,
+          "input_tokens_per_call": 55.0,
+          "output_tokens_per_call": 3.4
+        },
+        "test": {
+          "n": 92,
+          "accuracy": 0.9674,
+          "macro_f1": 0.9632,
+          "per_class_f1": {
+            "bank_statement": 1.0,
+            "pay_stub": 0.9474,
+            "w2": 0.9524,
+            "tax_return": 1.0,
+            "appraisal": 0.8571,
+            "purchase_agreement": 0.9524,
+            "homeowners_insurance": 1.0,
+            "gift_letter": 0.9231,
+            "verification_of_employment": 1.0,
+            "title_commitment": 1.0
+          },
+          "latency_ms_p50": 0.098,
+          "latency_ms_p95": 0.142,
+          "input_tokens_per_call": 58.0,
+          "output_tokens_per_call": 3.3
+        }
+      },
+      "notes": "437 examples, 2828 features"
+    }
+  },
+  "champions": [
+    "prompt-0b9ecd13",
+    "ft-98565702"
+  ],
+  "events": [
+    {
+      "at": "2026-09-25T22:34:22+00:00",
+      "event": "registered",
+      "version": "prompt-0b9ecd13",
+      "detail": "mock-chat-model (offline stand-in for the base deployment)"
+    },
+    {
+      "at": "2026-09-25T22:34:24+00:00",
+      "event": "registered",
+      "version": "ft-98565702",
+      "detail": "dataset 384bd8c3f124"
+    },
+    {
+      "at": "2026-09-25T22:34:24+00:00",
+      "event": "promoted",
+      "version": "prompt-0b9ecd13",
+      "detail": ""
+    },
+    {
+      "at": "2026-09-25T22:34:24+00:00",
+      "event": "promoted",
+      "version": "ft-98565702",
+      "detail": ""
+    }
+  ]
+}

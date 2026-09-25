@@ -1,0 +1,95 @@
+project: 19-finetune-vs-prompting
+title: Fine-tuning vs prompting - mortgage document classification with a promotion gate
+owner: Jagadish Meduri
+industry: Banking (mortgage origination, loan processing)
+summary: >-
+  Loan processors spend time naming and filing every uploaded page of a loan file. This
+  project classifies a document's first page into one of ten mortgage document types and
+  decides, with evidence, whether a fine-tuned model should replace the prompted base
+  model. A dataset builder scrubs borrower PII, removes duplicates, splits by loan file and
+  checks for leakage before writing chat-format JSONL. An offline fine-tuning path trains a
+  small classification head on CPU. A comparison harness runs both variants through the
+  shared eval harness and reports accuracy, macro-F1, latency and a token proxy for cost. A
+  model registry promotes the fine-tuned model only if it beats the incumbent on the
+  validation split, and supports rollback. The serving graph files confident documents in
+  the LOS and queues everything else for a processor. An optional Azure OpenAI fine-tuning
+  script consumes the same JSONL and is dry-run by default.
+maturity:
+  level: 3
+  rationale: champion model files documents autonomously above a confidence floor; promotion is gated on validation metrics and every non-confident, injected or unclassifiable page goes to a processor
+  next_rung: weekly re-label sample from processors feeds a drift monitor that triggers rollback automatically, and a hosted Azure OpenAI fine-tune is evaluated through the same harness before it can become champion
+kpis:
+  - {name: Auto-file precision, target: ">= 98% of auto-filed documents keep their type after processor QC", measure: "filed type vs processor QC sample"}
+  - {name: Auto-file rate, target: ">= 80% of uploaded pages filed without a processor", measure: "filed / (filed + queued) per week"}
+  - {name: Borrower PII in training files, target: "0", measure: "validator + planted-value test on every dataset build"}
+  - {name: Promotions without a validation win, target: "0", measure: "registry events: promoted entries all passed the gate"}
+roi: >-
+  Value is processor minutes saved per loan file on stacking and naming documents, plus fewer
+  conditions raised late because a document was misfiled. The fine-tuned model also sends
+  about a tenth of the prompt tokens per call. Costs are labelling and QC time, training
+  runs, hosting a fine-tuned deployment (billed hourly while deployed) and the processor
+  queue created by low-confidence pages, which is tracked rather than hidden.
+planes:
+  experience: loan processor e-folder view (filed type + confidence) and a document review queue
+  agent: LangGraph serving graph (intake -> classify -> file_document | human_review) plus the offline train -> compare -> gate -> promote/rollback lifecycle
+  knowledge: none at runtime; the label taxonomy and rubric are versioned artifacts in the model registry
+  data: loan origination system (LOS) document index via MCP; model registry (versioned artifacts, champion pointer)
+systems_of_record:
+  - {name: LOS document index, kind: mcp, contract: "los.file_document(loan_id, doc_id, doc_type, confidence, model_version, idempotency_key, dry_run); los.queue_review(loan_id, doc_id, reason, idempotency_key, dry_run)", access: write}
+  - {name: Model registry, kind: document_store, contract: "registry.json entries {version, kind, sha256, dataset_sha256, metrics, stage} + artifacts/<version>.json", access: read}
+knowledge:
+  corpora: []
+  notes: No retrieval. The input is the uploaded page itself, treated as untrusted (PII-scrubbed and injection-checked before any model sees it). The label rubric lives in the registered prompt artifact.
+contracts:
+  mcp:
+    - "los.file_document(loan_id, doc_id, doc_type, confidence, model_version, idempotency_key, dry_run)"
+    - "los.queue_review(loan_id, doc_id, reason, idempotency_key, dry_run)"
+  a2a: []
+  notes: Gateway identity mi-doc-classifier can only file or queue documents; page text never crosses the MCP boundary, only the type, confidence and model version.
+identities:
+  - {identity: mi-doc-classifier, allow: [los.file_document, los.queue_review]}
+stop_conditions:
+  - confidence < 0.55 or label 'unknown' -> processor review queue, never a guessed type
+  - suspected prompt injection in the page text -> processor review, never auto-filed
+  - all model deployments down -> processor review
+  - a candidate model is promoted only if it beats the champion on validation macro-F1 by >= 0.02 with no accuracy loss and no label losing more than 0.10 F1
+  - one LOS write per document (idempotency key classify:<doc_id>)
+graph: finetune_lab.graph:build_graph
+failure_playbook:
+  - node: intake
+    success: PII replaced with typed placeholders before any model call
+    retry: n/a (deterministic)
+    compensate: n/a
+    degrade: n/a
+    escalate: suspected prompt injection -> processor review
+  - node: classify
+    success: registry champion returns a label and confidence
+    retry: prompted baseline answers when the fine-tuned deployment is down (fallback chain + breakers underneath)
+    compensate: n/a (no side effects)
+    degrade: champion artifact fails its hash check or deployment down -> prompted baseline; every model down -> processor review
+    escalate: low confidence or 'unknown' -> processor review
+  - node: file_document
+    success: document filed in the LOS under the predicted type (idempotent on doc id)
+    retry: gateway backoff on transient LOS errors
+    compensate: n/a (replay returns the same filing)
+    degrade: LOS outage -> filing parked in the outbox with its idempotency key
+    escalate: n/a
+  - node: human_review
+    success: document queued for a processor with the reason and the model's suggestion
+    retry: gateway backoff on transient LOS errors
+    compensate: n/a (replay returns the same queue item)
+    degrade: LOS outage -> queue item parked in the outbox
+    escalate: this node is the escalation path
+chaos:
+  - {fault: model, node: classify, exit: degrade, invariant: "every model down -> processor review with 'classifier unavailable', no guessed type"}
+  - {fault: "model:finetuned", node: classify, exit: degrade, invariant: "fine-tuned deployment down -> prompted baseline files the W-2 and records its version"}
+  - {fault: "sor:los", node: file_document, exit: degrade, invariant: "type kept, filing parked in the outbox with idempotency key classify:<doc_id>"}
+  - {fault: jailbreak, node: intake, exit: escalate, invariant: "page with injected instructions goes to processor review, not the requested type"}
+eval:
+  golden: evals/golden.jsonl
+  suite: finetune_lab.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.9"
+    policy_violation_rate: "<=0"
+    tool_error_rate: "<=0.05"
+    cost_per_task: "<=0.002"
