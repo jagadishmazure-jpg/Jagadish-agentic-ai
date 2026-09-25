@@ -135,6 +135,21 @@ with the correct op code, parts and bulletin reference cut OEM rejections and ch
 Warranty spend stays under human control. Measure it with repair order clock times,
 comeback rate and claim rejection rate, before and after.
 
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`tech_copilot/`](tech_copilot/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (18 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (17 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/17-automotive-technician-copilot/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
+
 ## Doctrine compliance
 
 See [`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml): planes, three

@@ -1,6 +1,6 @@
 # 01 · Policy Q&A: corrective RAG with citations
 
-> **Status:** ✅ Built. `pytest projects/01-policy-qa-rag` runs 11 offline tests, and `python run.py` runs the demo.
+> **Status:** ✅ Built. `pytest projects/01-policy-qa-rag` runs 14 offline tests, and `python run.py` runs the demo.
 
 ## Business problem
 
@@ -99,6 +99,21 @@ The demo covers four cases:
 5. **Why BM25 first.** Policy questions are keyword-heavy (MFA, PTO, Concur), and lexical search
    is transparent and free. Embeddings go behind an interface and get added when the evals show
    a recall gap, typically as a hybrid with reranking.
+
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`policy_qa/`](policy_qa/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (14 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (13 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/01-policy-qa-rag/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
 
 ## Doctrine compliance
 

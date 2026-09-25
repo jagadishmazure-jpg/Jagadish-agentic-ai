@@ -1,6 +1,6 @@
 # 03 · Refund Agent: deterministic workflow with human-in-the-loop
 
-> **Status:** ✅ Built. `pytest` runs 13 offline tests for this project, and `python run.py` runs the demo.
+> **Status:** ✅ Built. `pytest` runs 20 offline tests for this project, and `python run.py` runs the demo.
 
 ## Business problem
 
@@ -114,7 +114,7 @@ From the repo root, after `uv sync --all-extras --group dev`:
 ```bash
 python projects/03-refund-agent/run.py            # small auto refund + large refund paused, then approved
 python projects/03-refund-agent/run.py --reject   # same, but the reviewer rejects
-pytest projects/03-refund-agent                   # 13 tests, offline
+pytest projects/03-refund-agent                   # 20 tests, offline
 ```
 
 To use a real model, export the Azure OpenAI or OpenAI variables from `.env.example`. The graph
@@ -155,6 +155,21 @@ behaves the same way; only the intent label and the wording of the reply come fr
    checkpointer)`) plus a deterministic mock LLM makes the whole suite run offline in under a
    second in CI. With a real model, I'd add an eval set for intent accuracy and reply tone, and
    track the guard-fallback rate as a production quality signal.
+
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`refund_agent/`](refund_agent/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (20 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (12 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/03-refund-agent/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
 
 ## Doctrine compliance
 

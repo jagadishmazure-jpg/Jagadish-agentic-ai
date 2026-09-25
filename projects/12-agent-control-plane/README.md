@@ -163,6 +163,21 @@ policy instead of commissioning point-to-point integrations. Risk reviews approv
 enforcement point. Incidents are contained by a kill switch in seconds. The costs are a small
 platform team and the registry/policy store.
 
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`control_plane/`](control_plane/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (29 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (14 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/12-agent-control-plane/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
+
 ## Doctrine compliance
 
 The full card is in [`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml):

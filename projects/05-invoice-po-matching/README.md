@@ -1,6 +1,6 @@
 # 05 · Invoice ↔ PO Matching: extraction, three-way match, exceptions
 
-> **Status:** ✅ Built. `pytest projects/05-invoice-po-matching` runs 12 offline tests, and `python run.py` runs the demo.
+> **Status:** ✅ Built. `pytest projects/05-invoice-po-matching` runs 15 offline tests, and `python run.py` runs the demo.
 
 ## Business problem
 
@@ -99,6 +99,21 @@ The demo covers these cases:
    regex mock for PDFs and scans. SAP S/4HANA or Oracle APIs provide POs and GRNs. Exceptions go
    to an AP work queue. Metrics: touchless rate, exception rate by code, and extraction-retry
    rate.
+
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`invoice_match/`](invoice_match/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (15 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (12 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/05-invoice-po-matching/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
 
 ## Doctrine compliance
 

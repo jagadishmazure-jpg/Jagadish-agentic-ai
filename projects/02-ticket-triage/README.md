@@ -1,6 +1,6 @@
 # 02 · Support Ticket Triage: router with a confidence gate
 
-> **Status:** ✅ Built. `pytest projects/02-ticket-triage` runs 12 offline tests, and `python run.py` runs the demo.
+> **Status:** ✅ Built. `pytest projects/02-ticket-triage` runs 15 offline tests, and `python run.py` runs the demo.
 
 ## Business problem
 
@@ -87,6 +87,21 @@ pytest projects/02-ticket-triage
 5. **Operational metrics.** Auto-route rate, misroute rate (from agent re-queues), time to first
    response, clarify-to-resolution conversion, and pages per week. Misroutes feed back into
    the eval set.
+
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`ticket_triage/`](ticket_triage/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (15 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (12 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/02-ticket-triage/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
 
 ## Doctrine compliance
 

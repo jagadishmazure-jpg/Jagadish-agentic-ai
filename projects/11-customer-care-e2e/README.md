@@ -172,6 +172,24 @@ specialist time for large refunds, a modest token bill (the model only classifie
 and the platform work to put OMS, CRM and payments behind MCP. The main value protected is
 leakage and trust: no refund outside policy, and no customer told money moved when it didn't.
 
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`care_e2e/`](care_e2e/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (25 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (21 cases) and the latest `scores.json`. |
+| [`deploy/azure/`](deploy/azure/README.md) | Azure Container Apps + APIM Bicep skeleton (not deployed). |
+| [`Dockerfile`](Dockerfile) | One image for the BFF and the three MCP servers (build from the repo root). |
+| [`docker-compose.yml`](docker-compose.yml) | Local topology: `care-bff` plus `mcp-oms`, `mcp-crm`, `mcp-payments` over streamable HTTP. |
+| [`run.py`](run.py) | Demo entry point: `python projects/11-customer-care-e2e/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
+
 ## Doctrine compliance
 
 The full card is in [`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml):

@@ -1,6 +1,6 @@
 # 04 · Sales Meeting Prep: parallel fan-out / fan-in with `Send`
 
-> **Status:** ✅ Built. `pytest projects/04-sales-meeting-prep` runs 9 offline tests, and `python run.py` runs the demo.
+> **Status:** ✅ Built. `pytest projects/04-sales-meeting-prep` runs 13 offline tests, and `python run.py` runs the demo.
 
 ## Business problem
 
@@ -83,6 +83,21 @@ pytest projects/04-sales-meeting-prep
    behind MCP tools or connectors. The graph is triggered from calendar events, and the brief
    is delivered to Teams or Slack 30 minutes before the meeting. I'd measure adoption by AE
    usage and meeting outcomes.
+
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`meeting_prep/`](meeting_prep/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (13 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (12 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/04-sales-meeting-prep/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
 
 ## Doctrine compliance
 

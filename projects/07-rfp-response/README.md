@@ -1,6 +1,6 @@
 # 07 · RFP Response: planner, worker subgraphs, critic, compliance
 
-> **Status:** ✅ Built. `pytest projects/07-rfp-response` runs 12 offline tests, and `python run.py` runs the demo.
+> **Status:** ✅ Built. `pytest projects/07-rfp-response` runs 17 offline tests, and `python run.py` runs the demo.
 
 ## Business problem
 
@@ -94,6 +94,21 @@ pytest projects/07-rfp-response
    caching repeated questions, a cheaper model for first drafts, and a stronger model for the
    critic. Evals measure citation accuracy, facet coverage, compliance hits, and reviewer edit
    distance.
+
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`rfp_agent/`](rfp_agent/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (17 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (12 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/07-rfp-response/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
 
 ## Doctrine compliance
 

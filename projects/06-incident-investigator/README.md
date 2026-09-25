@@ -1,6 +1,6 @@
 # 06 · Incident Investigator: autonomous ReAct loop with hard stops
 
-> **Status:** ✅ Built. `pytest projects/06-incident-investigator` runs 9 offline tests, and `python run.py` runs the demo.
+> **Status:** ✅ Built. `pytest projects/06-incident-investigator` runs 17 offline tests, and `python run.py` runs the demo.
 
 ## Business problem
 
@@ -101,6 +101,21 @@ pytest projects/06-incident-investigator
    deploy system (Argo, GitHub Actions), and runbooks in Confluence or RAG (project 01).
    Tracing through LangSmith or OpenTelemetry. Evals replay past incidents and score root-cause
    accuracy and time to diagnosis.
+
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`incident_agent/`](incident_agent/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (17 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (13 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/06-incident-investigator/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
 
 ## Doctrine compliance
 

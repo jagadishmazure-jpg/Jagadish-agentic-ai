@@ -129,6 +129,7 @@ shared/
   context/          # knowledge-plane runtime (hybrid retrieval, ACL, temporal, packer, cache)
   mcp_servers/      # FastMCP servers wrapping mock systems of record
   tools/            # MCP client connection, LangChain adapter, ToolGateway
+  a2a/              # A2A-style agent cards, JSON-RPC server + client (projects 12, 18)
   resilience.py     # fallback chain, circuit breakers, retry, FiveExitPolicy
   observability.py  # OpenTelemetry spans + cost meter (console/in-memory; OTLP optional)
   faults.py, chaos.py
@@ -138,6 +139,17 @@ evals/              # `python -m evals` runner for all projects
 projects/NN-name/   # README, package, tests, run.py, doctrine.yaml, DOCTRINE.md, evals/
 .github/workflows/  # CI: ruff + pytest + eval gate + doctrine gate (offline)
 ```
+
+### Folder READMEs
+
+Every folder has its own README with a file-by-file table. Good starting points:
+
+| Folder | What it covers |
+|---|---|
+| [`shared/`](shared/README.md) | The platform every project uses; links to [`context/`](shared/context/README.md), [`tools/`](shared/tools/README.md), [`mcp_servers/`](shared/mcp_servers/README.md), [`a2a/`](shared/a2a/README.md), [`evals/`](shared/evals/README.md), [`doctrine/`](shared/doctrine/README.md) and [`tests/`](shared/tests/README.md) |
+| [`evals/`](evals/README.md) | The `python -m evals` runner and its flags |
+| [`.github/workflows/`](.github/workflows/README.md) | What CI runs and how to reproduce it locally |
+| `projects/NN-name/` | Each project README ends with a **Project structure** table linking its package, `tests/` and `evals/` READMEs, e.g. [`03-refund-agent`](projects/03-refund-agent/README.md#project-structure) |
 
 ## Setup
 

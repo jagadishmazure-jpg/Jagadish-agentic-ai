@@ -149,6 +149,21 @@ recover damage costs that missed deadlines would otherwise write off. Capacity w
 alerts into options for ops. Measure it with contact rate per slipped shipment, notice lead
 time, claim recovery rate and late-filing rejections, before and after.
 
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`exception_agent/`](exception_agent/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (19 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (21 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/18-logistics-exception-agent/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
+
 ## Doctrine compliance
 
 See [`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml): planes, five

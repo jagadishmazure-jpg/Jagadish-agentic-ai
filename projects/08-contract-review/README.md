@@ -1,6 +1,6 @@
 # 08 · Contract Review: evaluator-optimizer loop plus an eval gate
 
-> **Status:** ✅ Built. `pytest projects/08-contract-review` runs 8 offline tests. `python run.py` runs the demo, and `python evals/run_eval.py` runs the eval gate.
+> **Status:** ✅ Built. `pytest projects/08-contract-review` runs 13 offline tests. `python run.py` runs the demo, and `python evals/run_eval.py` runs the eval gate.
 
 ## Business problem
 
@@ -88,6 +88,21 @@ pytest projects/08-contract-review
 5. **Production path.** Word add-in or CLM integration (Ironclad, Icertis), with Azure AI
    Document Intelligence for PDFs. An LLM-as-judge could supplement the rule evaluator for
    nuance, and lawyer accept/reject data feeds the eval set.
+
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`contract_review/`](contract_review/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (13 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (12 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/08-contract-review/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
 
 ## Doctrine compliance
 

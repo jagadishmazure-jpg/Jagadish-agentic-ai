@@ -1,6 +1,6 @@
 # 09 · Collections Agent: governance-first agentic workflow
 
-> **Status:** ✅ Built. `pytest projects/09-collections-agent` runs 12 offline tests. `python run.py` runs the demo (`--reject` makes the reviewer decline).
+> **Status:** ✅ Built. `pytest projects/09-collections-agent` runs 16 offline tests. `python run.py` runs the demo (`--reject` makes the reviewer decline).
 
 ## Business problem
 
@@ -105,6 +105,21 @@ pytest projects/09-collections-agent
 5. **Production path.** Managed identities per tool, Key Vault, APIM in front of write APIs,
    Postgres checkpointer, a reviewer UI in Teams, consent and channel preferences, and
    observability via LangSmith / App Insights with the audit log as the system of record.
+
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`collections_agent/`](collections_agent/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (16 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (13 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/09-collections-agent/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
 
 ## Doctrine compliance
 

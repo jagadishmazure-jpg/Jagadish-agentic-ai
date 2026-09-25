@@ -136,7 +136,7 @@ From the repo root, after `uv sync --all-extras --group dev`:
 python projects/10-supply-chain-multi-agent/run.py                 # all scenarios with hop trace
 python projects/10-supply-chain-multi-agent/run.py --sku SKU-300   # one SKU
 python projects/10-supply-chain-multi-agent/run.py --mermaid projects/10-supply-chain-multi-agent/graph.mmd
-pytest projects/10-supply-chain-multi-agent                        # 16 tests, offline
+pytest projects/10-supply-chain-multi-agent                        # 23 tests, offline
 ```
 
 To use a real model, set the Azure OpenAI or OpenAI variables from `.env.example`. The
@@ -181,6 +181,21 @@ The tests cover:
    checkpointer, Teams approval cards, per-agent managed identities, and OpenTelemetry or
    LangSmith tracing. The in-process `Specialist.run` interface is the seam where the swap
    happens.
+
+## Project structure
+
+| Path | What it is |
+|---|---|
+| [`supply_chain/`](supply_chain/README.md) | The importable package (graph, prompts and mock model, domain logic, eval suite, demo CLI), with a file-by-file map. |
+| [`tests/`](tests/README.md) | Pytest suite (23 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`evals/`](evals/README.md) | Golden set (17 cases) and the latest `scores.json`. |
+| [`run.py`](run.py) | Demo entry point: `python projects/10-supply-chain-multi-agent/run.py` (adds the package and repo root to `sys.path`). |
+| [`doctrine.yaml`](doctrine.yaml) | Machine-checked doctrine card: planes, systems of record, corpus and ACL, stop conditions, five-exit table, chaos scenarios, eval thresholds, KPIs. |
+| [`DOCTRINE.md`](DOCTRINE.md) | Generated from the card and `evals/scores.json` by `python -m shared.doctrine render`; do not edit by hand. |
+| [`graph.mmd`](graph.mmd) | Mermaid diagram of the compiled graph (regenerate with `run.py --mermaid`). |
+
+Shared platform code (context builder, tool gateway, MCP kit, resilience, evals, doctrine) lives in
+[`shared/`](../../shared/README.md).
 
 ## Doctrine compliance
 
