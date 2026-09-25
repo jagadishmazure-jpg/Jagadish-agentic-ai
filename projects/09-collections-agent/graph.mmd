@@ -1,0 +1,38 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	load_account(load_account)
+	policy_gate(policy_gate)
+	hardship_referral(hardship_referral)
+	no_contact(no_contact)
+	defer(defer)
+	propose_plan(propose_plan)
+	reviewer_approval(reviewer_approval)
+	execute_plan(execute_plan)
+	send_outreach(send_outreach)
+	rejected(rejected)
+	finalize(finalize)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> load_account;
+	defer --> finalize;
+	execute_plan --> send_outreach;
+	hardship_referral --> finalize;
+	load_account --> policy_gate;
+	no_contact --> finalize;
+	policy_gate -.-> defer;
+	policy_gate -.-> hardship_referral;
+	policy_gate -.-> no_contact;
+	policy_gate -.-> propose_plan;
+	propose_plan --> reviewer_approval;
+	rejected --> finalize;
+	reviewer_approval -.-> execute_plan;
+	reviewer_approval -.-> rejected;
+	send_outreach --> finalize;
+	finalize --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
