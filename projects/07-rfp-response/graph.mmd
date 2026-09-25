@@ -1,0 +1,39 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	plan(plan)
+	compliance(compliance)
+	assemble(assemble)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> plan;
+	compliance --> assemble;
+	plan -.-> section_worker\3a__start__;
+	section_worker\3a__end__ --> compliance;
+	assemble --> __end__;
+	subgraph section_worker
+	section_worker\3a__start__(<p>__start__</p>)
+	section_worker\3anext_question(next_question)
+	section_worker\3aretrieve(retrieve)
+	section_worker\3adraft(draft)
+	section_worker\3acritique(critique)
+	section_worker\3aaccept(accept)
+	section_worker\3aneeds_sme(needs_sme)
+	section_worker\3a__end__(<p>__end__</p>)
+	section_worker\3a__start__ --> section_worker\3anext_question;
+	section_worker\3aaccept --> section_worker\3anext_question;
+	section_worker\3acritique -.-> section_worker\3aaccept;
+	section_worker\3acritique -.-> section_worker\3adraft;
+	section_worker\3acritique -.-> section_worker\3aneeds_sme;
+	section_worker\3adraft --> section_worker\3acritique;
+	section_worker\3aneeds_sme --> section_worker\3anext_question;
+	section_worker\3anext_question -.-> section_worker\3a__end__;
+	section_worker\3anext_question -.-> section_worker\3aretrieve;
+	section_worker\3aretrieve --> section_worker\3adraft;
+	end
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
