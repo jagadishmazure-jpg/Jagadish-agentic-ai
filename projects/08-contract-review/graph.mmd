@@ -1,0 +1,25 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	segment(segment)
+	classify_clauses(classify_clauses)
+	review(review)
+	evaluate(evaluate)
+	guardrails(guardrails)
+	score_and_route(score_and_route)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> segment;
+	classify_clauses --> review;
+	evaluate -.-> guardrails;
+	evaluate -.-> review;
+	guardrails --> score_and_route;
+	review --> evaluate;
+	segment --> classify_clauses;
+	score_and_route --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

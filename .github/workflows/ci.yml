@@ -26,3 +26,7 @@ jobs:
         env:
           LLM_PROVIDER: mock
         run: uv run pytest
+      - name: Eval gate (08-contract-review precision/recall)
+        env:
+          LLM_PROVIDER: mock
+        run: uv run python projects/08-contract-review/evals/run_eval.py --min-precision 0.8 --min-recall 0.8
