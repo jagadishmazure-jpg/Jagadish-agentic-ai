@@ -1,0 +1,136 @@
+project: 17-automotive-technician-copilot
+title: Automotive technician copilot - current TSB wins, captioned wiring diagrams, warranty HITL
+owner: Jagadish Meduri
+industry: Automotive (dealer service, OEM warranty)
+summary: >-
+  A service-bay copilot for technicians. The VIN is decoded over MCP. Technical service
+  bulletins are retrieved as of the repair date and filtered by model, year range, engine and
+  build date. Superseded bulletins are dropped, so the current TSB always wins even if an old
+  bulletin was never formally retired. Wiring diagrams are retrieved through caption text and
+  image IDs, which stand in for a vision model. A safety check rejects any torque value, part
+  number or citation that is not in a current, applicable bulletin (the wrong-version test).
+  Parts availability (ATP) is read via MCP and follows part supersession. Warranty coverage
+  is a deterministic tool, and every covered claim goes to a warranty administrator. Claims
+  are never auto-approved.
+maturity:
+  level: 3
+  rationale: the copilot drafts guidance and prepares claims; a technician does the work and a warranty administrator approves every claim
+  next_rung: add a real vision model over diagram images with caption-agreement checks, and auto-approve low-value claims once audit agreement is proven
+kpis:
+  - {name: Wrong-version guidance, target: "0 superseded torque specs or part numbers shown", measure: "safety check + golden wrong-version case"}
+  - {name: Diagnostic time to first fix, target: "-20% on TSB-covered concerns", measure: "repair order clock times, before vs after"}
+  - {name: Warranty claim rejection rate, target: "down vs baseline", measure: "OEM claim rejections for wrong op code or parts"}
+  - {name: Auto-approved claims, target: "0", measure: "claims without an administrator approver"}
+roi: >-
+  Technicians lose time searching bulletins and diagrams, and a superseded spec means a
+  comeback or a safety issue. A copilot that shows only the current bulletin with the right
+  harness revision cuts diagnosis time and comebacks. Checking parts ATP up front avoids
+  vehicles waiting on lifts. Warranty claims prepared with the correct op code and parts
+  reduce OEM rejections. Warranty spend stays under human control because every claim needs
+  an administrator. Costs are bulletin and diagram ingestion, DMS/parts/warranty integration
+  and model usage.
+planes:
+  experience: technician tablet in the service bay; warranty administrator approval queue
+  agent: LangGraph graph (intake -> [tsb || diagrams] -> procedure -> parts -> warranty -> warranty_approval -> finalize); safety check in procedure
+  knowledge: TSB corpus (issue/retire dates, supersession, applicability registry) and wiring-diagram captions keyed by image ID, on the shared ContextBuilder
+  data: vehicle (VIN decode), parts ATP and warranty via MCP; reader and warranty-writer identities
+systems_of_record:
+  - {name: Vehicle master, kind: mcp, contract: "vehicle.decode_vin(vin) -> model, year, engine, build_date, mileage", access: read}
+  - {name: Parts / DMS, kind: mcp, contract: "parts.check_atp(part_number, dealer) -> on_hand, eta_days, superseded_by", access: read}
+  - {name: Warranty system, kind: mcp, contract: "warranty.check_coverage(vin, op_code, repair_date); warranty.submit_claim(claim, idempotency_key, dry_run)", access: read_write}
+knowledge:
+  corpora:
+    - name: tsb
+      owner: Jagadish Meduri (OEM technical service)
+      acl: technician
+      temporal: "valid from the issue date, until the retire date or until superseded by a bulletin valid on the repair date"
+      refresh_sla: on bulletin publication
+      sensitivity: internal
+    - name: wiring-diagrams
+      owner: Jagadish Meduri (OEM service information)
+      acl: technician
+      temporal: "by model year range (harness revision)"
+      refresh_sla: on harness revision
+      sensitivity: internal
+  notes: Applicability (model, years, engine, build date) and supersession are structured metadata checked in code, not left to similarity.
+contracts:
+  mcp:
+    - "vehicle.decode_vin(vin)"
+    - "parts.check_atp(part_number, dealer)"
+    - "warranty.check_coverage(vin, op_code, repair_date)"
+    - "warranty.submit_claim(claim, idempotency_key, dry_run)"
+  a2a: []
+  notes: An OEM field-quality agent could consume repeat-repair patterns over the shared A2A contract.
+identities:
+  - {identity: mi-tech-reader, allow: [vehicle.decode_vin, parts.check_atp, warranty.check_coverage]}
+  - {identity: mi-warranty-writer, allow: [warranty.submit_claim]}
+stop_conditions:
+  - unknown VIN -> no bulletin guidance
+  - no current applicable TSB -> standard diagnostic flow, no specs
+  - any torque value, part number or citation not in a current applicable TSB -> guidance replaced by bulletin text
+  - covered repair -> warranty administrator decision; agents and technicians cannot approve
+  - coverage unknown -> no claim
+graph: tech_copilot.graph:build_graph
+failure_playbook:
+  - node: intake
+    success: VIN decoded, concern sanitised
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: instruction-like concern text neutralised
+    escalate: VIN not decodable -> no guidance, service advisor
+  - node: tsb
+    success: applicable, current bulletins as of the repair date
+    retry: n/a (idempotent search)
+    compensate: n/a
+    degrade: bulletin index down -> no bulletin, standard diagnosis
+    escalate: n/a
+  - node: diagrams
+    success: applicable diagram (harness revision by year) retrieved by caption
+    retry: n/a (idempotent search)
+    compensate: n/a
+    degrade: diagram index down -> guidance without diagrams
+    escalate: n/a
+  - node: procedure
+    success: model guidance passing the spec and citation safety check
+    retry: fallback deployment
+    compensate: n/a
+    degrade: model down or safety failure -> verbatim bulletin text
+    escalate: n/a
+  - node: parts
+    success: ATP for bulletin parts, following part supersession
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: parts system down -> ATP unknown, check with the parts counter
+    escalate: n/a
+  - node: warranty
+    success: coverage decision from the warranty tool
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: warranty down -> coverage unknown, no claim
+    escalate: n/a
+  - node: warranty_approval
+    success: administrator approves or rejects
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: non-administrator approver -> refused, no claim
+  - node: finalize
+    success: "claim submitted (idempotency key claim:<ro>) only after approval"
+    retry: gateway backoff with the same key
+    compensate: withdraw claim in the warranty system
+    degrade: warranty down at submit -> claim pending
+    escalate: n/a
+chaos:
+  - {fault: model, node: procedure, exit: degrade, invariant: "verbatim current bulletin (32 Nm), never the superseded spec"}
+  - {fault: retrieval, node: tsb, exit: degrade, invariant: "no specs, no bulletin citations, no claim"}
+  - {fault: "sor:parts", node: parts, exit: degrade, invariant: "ATP unknown; guidance unaffected"}
+  - {fault: "sor:warranty", node: warranty, exit: degrade, invariant: "coverage unknown; no claim"}
+  - {fault: jailbreak, node: intake, exit: degrade, invariant: "injected concern text neutralised; current bulletin still found"}
+eval:
+  golden: evals/golden.jsonl
+  suite: tech_copilot.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.95"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"

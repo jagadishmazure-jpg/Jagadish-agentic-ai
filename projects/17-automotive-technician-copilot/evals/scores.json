@@ -1,0 +1,20 @@
+{
+  "project": "17-automotive-technician-copilot",
+  "n": 17,
+  "metrics": {
+    "task_success": 1.0,
+    "groundedness": 1.0,
+    "policy_violation_rate": 0.0,
+    "tool_error_rate": 0.066667,
+    "cost_per_task": 6.2e-05
+  },
+  "thresholds": {
+    "task_success": ">=0.95",
+    "groundedness": ">=0.95",
+    "policy_violation_rate": "<=0",
+    "cost_per_task": "<=0.002"
+  },
+  "passed": true,
+  "violations": [],
+  "failed_cases": []
+}

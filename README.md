@@ -37,6 +37,7 @@ generated `DOCTRINE.md`; CI blocks promotion if any of it is missing or the eval
 | 14 | [healthcare-prior-auth](projects/14-healthcare-prior-auth) | Prior-auth packets for provider offices; member status | PHI redaction (context + logs) + plan ACL/plan-year RAG ∥ eligibility MCP → coverage-language subgraph (kill switch) → draft → clinician sign-off | ✅ Built |
 | 15 | [banking-credit-memo](projects/15-banking-credit-memo) | Commercial credit memo and limit booking | Planner → mandatory KYC (temporal ownership graph RAG) → semantic-layer measures ∥ PD model tool ∥ policy RAG → cited memo + critic → dual control | ✅ Built |
 | 16 | [telecom-outage-care](projects/16-telecom-outage-care) | Outage-aware care, bill explain, dispatch; NOC summaries | OSS truth + freshness ∥ account → topology blast radius → cited bill explain / dispatch context pack / offers (blocked in outage); read-only NOC branch | ✅ Built |
+| 17 | [automotive-technician-copilot](projects/17-automotive-technician-copilot) | Service-bay TSB, wiring and parts copilot; warranty claims | VIN (MCP) → TSB as-of repair date ∥ caption-indexed diagrams → wrong-version safety check → parts ATP → warranty coverage → admin HITL → idempotent claim | ✅ Built |
 
 ## Architecture: four planes and the shared platform
 
@@ -107,6 +108,7 @@ ladder.
 | [14-healthcare-prior-auth](projects/14-healthcare-prior-auth/DOCTRINE.md) | L3 | eligibility, pa_portal | medical-policies (ACL) | 5 | 9 | 5 | 20 | 1.00 | 1.00 | 0.00 | Packet preparation time (< 10 minutes from request to clinician-ready draft) |
 | [15-banking-credit-memo](projects/15-banking-credit-memo/DOCTRINE.md) | L3 | kyc, loan_system, risk_model, semantic | credit-policy (ACL), beneficial-ownership-graph (ACL) | 5 | 9 | 5 | 18 | 1.00 | 1.00 | 0.00 | Memo preparation time (< 1 hour from request to approver-ready memo) |
 | [16-telecom-outage-care](projects/16-telecom-outage-care/DOCTRINE.md) | L4 | billing, diagnostics, field, offers, oss | tariffs (ACL) | 5 | 9 | 4 | 19 | 1.00 | 1.00 | 0.00 | Avoidable truck rolls (0 dispatches while a confirmed or unverifiable outage covers the path) |
+| [17-automotive-technician-copilot](projects/17-automotive-technician-copilot/DOCTRINE.md) | L3 | parts, vehicle, warranty | tsb (ACL), wiring-diagrams (ACL) | 5 | 8 | 5 | 17 | 1.00 | 1.00 | 0.00 | Wrong-version guidance (0 superseded torque specs or part numbers shown) |
 <!-- doctrine-matrix:end -->
 
 Notes on the numbers:
@@ -182,6 +184,7 @@ python projects/13-insurance-fnol-coverage/run.py
 python projects/14-healthcare-prior-auth/run.py
 python projects/15-banking-credit-memo/run.py
 python projects/16-telecom-outage-care/run.py
+python projects/17-automotive-technician-copilot/run.py
 ```
 
 ## Using a real LLM (optional)
