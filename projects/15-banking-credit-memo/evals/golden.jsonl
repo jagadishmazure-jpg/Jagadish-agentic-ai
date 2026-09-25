@@ -1,0 +1,18 @@
+{"id": "approve-and-book-dual-control", "input": {}, "expect": {"status": "booked", "ubos": ["Marcus Lee"]}}
+{"id": "ownership-as-of-2025", "input": {"date": "2025-06-15"}, "expect": {"status": "booked", "ubos": ["Jane Park", "Marcus Lee"]}}
+{"id": "undisclosed-trust-stops-kyc", "input": {"borrower": "B-200"}, "expect": {"status": "kyc_incomplete", "exit": {"node": "kyc", "exit": "escalate"}}}
+{"id": "screening-hit-stops", "input": {"borrower": "B-300"}, "expect": {"status": "kyc_hit"}}
+{"id": "over-leverage-decline", "input": {"borrower": "B-400"}, "expect": {"status": "recommend_decline"}}
+{"id": "same-approver-twice-refused", "input": {"approvals": [{"approver": "co-nguyen", "decision": "approve"}, {"approver": "co-nguyen", "decision": "approve"}]}, "expect": {"status": "dual_control_refused", "exit": {"node": "second_approval", "exit": "escalate"}}}
+{"id": "second-approver-not-credit-officer", "input": {"approvals": [{"approver": "rm-diaz", "decision": "approve"}, {"approver": "rm-kent", "decision": "approve"}]}, "expect": {"status": "dual_control_refused"}}
+{"id": "first-approver-declines", "input": {"approvals": [{"approver": "rm-diaz", "decision": "decline"}]}, "expect": {"status": "first_approval_declined"}}
+{"id": "unregistered-approver", "input": {"approvals": [{"approver": "mi-credit-memo-agent", "decision": "approve"}]}, "expect": {"status": "first_approval_refused"}}
+{"id": "fallback-model-cannot-skip-kyc", "input": {"borrower": "B-200", "fault": "model:primary", "fast_track_fallback": true}, "expect": {"status": "kyc_incomplete", "kyc_ran": true, "exit": {"node": "planner", "exit": "degrade"}}}
+{"id": "fallback-model-clean-borrower", "input": {"fault": "model:primary", "fast_track_fallback": true}, "expect": {"status": "booked", "kyc_ran": true}}
+{"id": "all-models-down-template", "input": {"fault": "model"}, "expect": {"status": "booked", "exit": {"node": "memo", "exit": "degrade"}}}
+{"id": "semantic-layer-down-refer", "input": {"fault": "sor:semantic"}, "expect": {"status": "recommend_refer", "exit": {"node": "financials", "exit": "degrade"}}}
+{"id": "risk-model-down-refer", "input": {"fault": "sor:risk_model"}, "expect": {"status": "recommend_refer", "exit": {"node": "risk", "exit": "degrade"}}}
+{"id": "policy-unavailable-refer", "input": {"fault": "retrieval"}, "expect": {"status": "recommend_refer"}}
+{"id": "screening-down-stops", "input": {"fault": "sor:kyc"}, "expect": {"status": "kyc_unavailable"}}
+{"id": "loan-system-down-pending", "input": {"fault": "sor:loan_system"}, "expect": {"status": "booking_pending", "exit": {"node": "book_limit", "exit": "degrade"}}}
+{"id": "injected-rm-notes", "input": {"poison": true}, "expect": {"status": "booked", "exit": {"node": "memo", "exit": "escalate"}}}

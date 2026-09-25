@@ -1,0 +1,142 @@
+project: 15-banking-credit-memo
+title: Banking credit memo - semantic-layer financials, ownership graph, dual control
+owner: Jagadish Meduri
+industry: Banking (commercial lending)
+summary: >-
+  Prepares a commercial credit memo and books the limit only under dual control. A planner
+  model proposes analyses, but KYC is a mandatory graph edge that neither the primary nor the
+  fallback model can route around. KYC walks a beneficial-ownership graph as of the
+  application date (edges carry validity) and screens every person. Financials come only from
+  a governed semantic layer, get_measure(name, grain, filters), dry-run first and never raw
+  SQL. The existing PD/rating model is a tool. Credit policy limits are retrieved as of the
+  application date. The model drafts the memo; a critic checks every figure and citation. Two
+  distinct approvers (the second a credit officer) are required, and the loan system checks
+  that again.
+maturity:
+  level: 3
+  rationale: analyst assist with hard controls - memo preparation is automated, credit decisions and bookings stay with two humans, and KYC is structurally mandatory
+  next_rung: connect to the bank's metric store (dbt/semantic layer on the lakehouse) and entity-resolution service for ownership, and add annual-review memos for the existing book under the same controls
+kpis:
+  - {name: Memo preparation time, target: "< 1 hour from request to approver-ready memo", measure: "request -> first_approval interrupt timestamps"}
+  - {name: Memo figures traceable to governed measures, target: "100%", measure: "critic: every number in the memo appears in semantic-layer results; every figure cited"}
+  - {name: Limits booked without dual control or clear KYC, target: "0", measure: "loan system audit: approvals distinct, second approver credit officer, KYC status clear"}
+  - {name: KYC bypass attempts honoured, target: "0", measure: "planner exits 'omitted kyc' vs traces containing kyc"}
+roi: >-
+  Relationship managers and credit analysts spend much of a new-facility cycle gathering
+  financials, tracing ownership and writing the memo. Automating the preparation shortens time
+  to decision for borrowers and lets analysts handle more applications with consistent
+  quality. Because figures come from governed measures and every number is cited, review
+  effort drops and audit findings on data lineage fall. Credit risk is unchanged: KYC and dual
+  control are enforced by the graph and the system of record. Costs are model usage and
+  semantic-layer and screening integration.
+planes:
+  experience: RM workbench (request, memo review) and credit officer approval queue (first/second approval interrupts)
+  agent: LangGraph credit-memo graph (planner -> kyc -> [financials || risk || policy] -> memo -> first_approval -> second_approval -> book_limit) with checkpoints; KYC is an unconditional edge
+  knowledge: beneficial-ownership graph with valid_from/valid_to (graph RAG, citable OWN edge ids) + credit-policy corpus (editions as-of the application date, ACL) on the shared ContextBuilder
+  data: governed semantic layer (gold credit mart), KYC screening, PD/rating model endpoint and loan system via MCP; reader and booker identities
+systems_of_record:
+  - {name: Semantic layer (gold credit mart), kind: semantic_model, contract: "semantic.get_measure(name, grain, filters, dry_run) - registered measures only, borrower_id mandatory, no SQL", access: read}
+  - {name: KYC screening, kind: api, contract: "kyc.screen(names) -> hits, list_version", access: read}
+  - {name: PD / rating model, kind: api, contract: "risk_model.score(borrower_id) -> pd, grade, model_version", access: read}
+  - {name: Loan system, kind: mcp, contract: "loan_system.set_credit_limit(borrower_id, amount, approvals, idempotency_key, dry_run) - dual control enforced server-side", access: write}
+knowledge:
+  corpora:
+    - name: credit-policy
+      owner: Jagadish Meduri (credit policy)
+      acl: "credit-risk group; special-assets watchlist special-assets only"
+      temporal: "2025 and 2026 editions of leverage/DSCR limits; retrieved as-of the application date"
+      refresh_sla: on credit committee approval
+      sensitivity: internal
+    - name: beneficial-ownership-graph
+      owner: Jagadish Meduri (KYC data)
+      acl: "credit-risk and KYC roles only"
+      temporal: "every ownership edge has valid_from/valid_to; walked as-of the application date"
+      refresh_sla: on corporate registry change events
+      sensitivity: confidential
+contracts:
+  mcp:
+    - "semantic.get_measure(name, grain, filters, dry_run)"
+    - "kyc.screen(names)"
+    - "risk_model.score(borrower_id)"
+    - "loan_system.set_credit_limit(borrower_id, amount, approvals, idempotency_key, dry_run)"
+  a2a: []
+  notes: A collateral-valuation agent over the shared A2A contract would be the first peer.
+identities:
+  - {identity: mi-credit-reader, allow: [semantic.get_measure, kyc.screen, risk_model.score]}
+  - {identity: mi-limit-booker, allow: [loan_system.set_credit_limit]}
+stop_conditions:
+  - KYC is an unconditional edge after the planner; opaque ownership, a screening match or a screening outage stop the application before any memo
+  - financials only via registered measures with a dry-run plan check; no SQL surface exists
+  - any missing input (financials, risk score, policy) -> recommendation "refer", no approval path
+  - limits book only after two distinct approvers, the second a credit officer; the loan system re-checks
+  - memo figures and citations must match governed results, otherwise the deterministic template is used
+graph: credit_memo.graph:build_graph
+failure_playbook:
+  - node: planner
+    success: model plan with optional analyses
+    retry: fallback deployment
+    compensate: n/a
+    degrade: models down / unparseable / required step omitted -> required steps enforced by the graph
+    escalate: n/a
+  - node: kyc
+    success: UBOs >= 25% as of the application date identified and screened clear
+    retry: gateway backoff on screening
+    compensate: n/a (read-only)
+    degrade: n/a (never skipped)
+    escalate: opaque owner, screening match or screening down -> stop, KYC team
+  - node: financials
+    success: governed measures (dry-run plan checked, then executed)
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: semantic layer down / no gold rows -> financials missing -> refer
+    escalate: n/a
+  - node: risk
+    success: PD and grade from the validated model
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: model endpoint down -> refer
+    escalate: n/a
+  - node: policy
+    success: limits edition in force on the application date, cited
+    retry: n/a (idempotent search)
+    compensate: n/a
+    degrade: retrieval down / edition not retrieved -> refer
+    escalate: n/a
+  - node: memo
+    success: deterministic recommendation + model memo passing the numbers/citation critic
+    retry: fallback deployment
+    compensate: n/a (no side effects)
+    degrade: models down or critic failure -> template memo
+    escalate: missing inputs -> refer; injected RM notes -> flagged to approvers
+  - node: first_approval
+    success: registered approver approves
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: declined or unregistered approver -> stop
+  - node: second_approval
+    success: a different person, a credit officer, approves
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: same person / not a credit officer / declined -> dual control refused
+  - node: book_limit
+    success: loan system books the limit with both approvals
+    retry: "gateway backoff; idempotency key limit:<application>"
+    compensate: limit reversal in the loan system (dual control again)
+    degrade: loan system down -> booking pending with approvals retained
+    escalate: loan system rejects approvals -> operations
+chaos:
+  - {fault: model, node: planner, exit: degrade, invariant: "default plan still runs KYC; template memo; booked only with dual control"}
+  - {fault: retrieval, node: policy, exit: degrade, invariant: "no limits policy -> refer; nothing booked"}
+  - {fault: "sor:semantic", node: financials, exit: degrade, invariant: "no governed financials -> refer; nothing booked"}
+  - {fault: "sor:kyc", node: kyc, exit: escalate, invariant: "screening outage stops the application; no memo"}
+  - {fault: jailbreak, node: memo, exit: escalate, invariant: "injected RM notes neutralised and flagged; not in the memo; dual control unchanged"}
+eval:
+  golden: evals/golden.jsonl
+  suite: credit_memo.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.95"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"

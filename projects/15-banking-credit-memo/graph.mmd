@@ -1,0 +1,36 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	planner(planner)
+	kyc(kyc)
+	financials(financials)
+	risk(risk)
+	policy(policy)
+	memo(memo)
+	first_approval(first_approval)
+	second_approval(second_approval)
+	book_limit(book_limit)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> planner;
+	financials --> memo;
+	first_approval -.-> __end__;
+	first_approval -.-> second_approval;
+	kyc -.-> __end__;
+	kyc -.-> financials;
+	kyc -.-> policy;
+	kyc -.-> risk;
+	memo -.-> __end__;
+	memo -.-> first_approval;
+	planner --> kyc;
+	policy --> memo;
+	risk --> memo;
+	second_approval -.-> __end__;
+	second_approval -.-> book_limit;
+	book_limit --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
