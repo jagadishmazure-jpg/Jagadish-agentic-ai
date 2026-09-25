@@ -19,7 +19,7 @@ tests, and a README covering design trade-offs and interview talking points.
 | 02 | [ticket-triage](projects/02-ticket-triage) | Classify and route support tickets | Router: structured output + confidence gate + repair retry + PII redaction | ✅ Built |
 | 03 | [refund-agent](projects/03-refund-agent) | Customer refunds with policy checks and approvals | Deterministic workflow + HITL `interrupt()` + idempotency | ✅ Built |
 | 04 | [sales-meeting-prep](projects/04-sales-meeting-prep) | Pre-call account brief for AEs | Parallel fan-out/fan-in with `Send` + reducers, partial-failure tolerance | ✅ Built |
-| 05 | [invoice-po-matching](projects/05-invoice-po-matching) | AP 3-way match and exception handling | Pipeline + exception subgraph + HITL | 📝 Planned |
+| 05 | [invoice-po-matching](projects/05-invoice-po-matching) | AP 3-way match and exception handling | Extraction pipeline + validation retry edge + typed errors + `RetryPolicy` | ✅ Built |
 | 06 | [incident-investigator](projects/06-incident-investigator) | On-call root-cause investigation | Bounded ReAct / plan-execute-reflect | 📝 Planned |
 | 07 | [rfp-response](projects/07-rfp-response) | Draft RFP / security questionnaire answers | Plan-and-execute with subgraphs | 📝 Planned |
 | 08 | [contract-review](projects/08-contract-review) | Playbook-based contract risk review | Critic / reviser loop with citations | 📝 Planned |
@@ -62,6 +62,7 @@ pytest                     # all projects, offline, mock LLM
 ```bash
 python projects/03-refund-agent/run.py
 python projects/10-supply-chain-multi-agent/run.py
+python projects/05-invoice-po-matching/run.py
 python projects/04-sales-meeting-prep/run.py
 python projects/02-ticket-triage/run.py
 python projects/01-policy-qa-rag/run.py

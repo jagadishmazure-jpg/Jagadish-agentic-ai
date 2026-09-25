@@ -1,0 +1,28 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	extract(extract)
+	extraction_failed(extraction_failed)
+	fetch_erp(fetch_erp)
+	three_way_match(three_way_match)
+	approve_for_payment(approve_for_payment)
+	draft_exception_note(draft_exception_note)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> extract;
+	extract -.-> extraction_failed;
+	extract -.-> fetch_erp;
+	extraction_failed --> draft_exception_note;
+	fetch_erp -.-> draft_exception_note;
+	fetch_erp -.-> three_way_match;
+	three_way_match -.-> approve_for_payment;
+	three_way_match -.-> draft_exception_note;
+	approve_for_payment --> __end__;
+	draft_exception_note --> __end__;
+	extract -.-> extract;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
