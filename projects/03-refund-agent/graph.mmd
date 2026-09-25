@@ -1,0 +1,39 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	classify_intent(classify_intent)
+	verify_identity(verify_identity)
+	check_order(check_order)
+	check_refund_policy(check_refund_policy)
+	human_approval(human_approval)
+	issue_refund(issue_refund)
+	notify_rejection(notify_rejection)
+	deny(deny)
+	fraud_review(fraud_review)
+	escalate(escalate)
+	compose_reply(compose_reply)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> classify_intent;
+	check_order --> check_refund_policy;
+	check_refund_policy -.-> deny;
+	check_refund_policy -.-> fraud_review;
+	check_refund_policy -.-> human_approval;
+	check_refund_policy -.-> issue_refund;
+	classify_intent --> verify_identity;
+	deny --> compose_reply;
+	escalate --> compose_reply;
+	fraud_review --> compose_reply;
+	human_approval -.-> issue_refund;
+	human_approval -.-> notify_rejection;
+	issue_refund --> compose_reply;
+	notify_rejection --> compose_reply;
+	verify_identity -.-> check_order;
+	verify_identity -.-> escalate;
+	compose_reply --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
