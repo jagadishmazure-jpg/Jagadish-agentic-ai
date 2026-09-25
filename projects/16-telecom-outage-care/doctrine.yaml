@@ -1,0 +1,137 @@
+project: 16-telecom-outage-care
+title: Telecom outage-aware care - topology blast radius, fresh truth, no upsell in outages
+owner: Jagadish Meduri
+industry: Telecommunications (broadband and mobile care, NOC)
+summary: >-
+  Customer care that knows the network. Outage truth comes from the OSS over MCP with a
+  freshness check: a stale feed is disclosed ("our status data is 50 minutes old"), never
+  presented as fact. A redundancy-aware service topology graph decides whether an incident
+  actually reaches the customer's access node (a dual-homed cell survives a single aggregation
+  failure). Bills are explained line by line with tariff citations retrieved as of the bill
+  period. Offers are blocked during a confirmed or unverifiable outage. When no outage
+  explains a failed line test, a field dispatch context pack is created. A NOC assistant,
+  on a read-only identity, summarises incidents and what-if blast radius and never acts.
+maturity:
+  level: 4
+  rationale: autonomous for read-and-explain journeys and truck-roll creation, with guards (freshness, no upsell in outage, citations) and a summarise-only NOC mode
+  next_rung: subscribe to OSS alarms on Event Hubs to push proactive outage notices, and add outage credits as an outbox write once credit accuracy is proven
+kpis:
+  - {name: Avoidable truck rolls, target: "0 dispatches while a confirmed or unverifiable outage covers the path", measure: "field dispatches vs OSS incidents on the service path"}
+  - {name: Upsell during outage, target: "0 offers shown", measure: "offer impressions for accounts on a confirmed-outage path"}
+  - {name: Stale-status disclosure, target: "100% of answers on a stale feed say so", measure: "respond guard + reply scan"}
+  - {name: Bill-explain contact containment, target: ">= 60% resolved without an agent", measure: "billing intents without transfer or repeat contact in 7 days"}
+roi: >-
+  During outages, care queues spike with the same question, and customers who are told
+  "restart your router" or offered an upgrade get angrier. Grounding answers in live OSS truth
+  and topology deflects those contacts with an honest ETA, avoids truck rolls that the network
+  fault already explains, and protects NPS by suppressing offers. Cited bill explanations
+  reduce billing escalations. Costs are OSS/billing integration and model usage; the NOC
+  assistant saves engineer time on incident summaries without any change authority.
+planes:
+  experience: care app/chat (customer channel) and NOC console (summarise-only channel)
+  agent: LangGraph care graph (intake -> [status || account] -> triage -> bill_explain | dispatch | offers -> respond) and noc_summary branch; guards in respond and noc_summary
+  knowledge: tariff corpus (plan editions as-of the bill period, proration, equipment, outage credits; NOC runbook ACL noc only) on the shared ContextBuilder; service topology graph for blast radius
+  data: OSS, billing, diagnostics, offer engine and field service via MCP; care reader, field writer and read-only NOC identities
+systems_of_record:
+  - {name: OSS / fault management, kind: mcp, contract: "oss.get_active_incidents() -> incidents + observed_at (freshness SLA 15 min)", access: read}
+  - {name: Billing, kind: mcp, contract: "billing.get_bill(account) -> period_start, lines", access: read}
+  - {name: Line diagnostics, kind: api, contract: "diagnostics.line_test(account) -> ont, signal_dbm", access: read}
+  - {name: Offer engine, kind: api, contract: "offers.get_offers(account)", access: read}
+  - {name: Field service, kind: mcp, contract: "field.create_dispatch(pack, idempotency_key, dry_run)", access: write}
+knowledge:
+  corpora:
+    - name: tariffs
+      owner: Jagadish Meduri (product pricing)
+      acl: "care and noc; NOC-RUNBOOK-INT noc only"
+      temporal: "plan tariffs by edition (2025, 2026); retrieved as-of the bill period start"
+      refresh_sla: on tariff publication
+      sensitivity: internal
+  notes: The service topology (depends_on with dual-homing) is a graph knowledge source computed deterministically, not retrieved by similarity.
+contracts:
+  mcp:
+    - "oss.get_active_incidents()"
+    - "billing.get_bill(account)"
+    - "diagnostics.line_test(account)"
+    - "offers.get_offers(account)"
+    - "field.create_dispatch(pack, idempotency_key, dry_run)"
+  a2a: []
+  notes: A NOC incident agent could publish incident summaries to care over the shared A2A contract.
+identities:
+  - {identity: mi-care-reader, allow: [oss.get_active_incidents, billing.get_bill, diagnostics.line_test, offers.get_offers]}
+  - {identity: mi-field-writer, allow: [field.create_dispatch]}
+  - {identity: mi-noc-reader, allow: [oss.get_active_incidents]}
+stop_conditions:
+  - OSS feed older than 15 minutes or unavailable -> status "unknown", disclosed; no dispatch, no offers
+  - confirmed outage on the customer's path -> ETA answer, no offers, no truck roll
+  - dispatch only when the status is fresh, no incident covers the path and the line test fails (one per account per day)
+  - bill lines are explained only with retrieved tariff citations; unexplained lines are flagged for follow-up
+  - the NOC assistant refuses action requests and strips action language; its identity has no write tools
+graph: outage_care.graph:build_graph
+failure_playbook:
+  - node: intake
+    success: intent from the model (outage, billing, other) or NOC channel routing
+    retry: fallback deployment
+    compensate: n/a
+    degrade: models down -> keyword intent
+    escalate: n/a
+  - node: status
+    success: fresh OSS incidents + topology decide confirmed / none
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: stale feed or OSS down -> unknown, disclosed to the customer
+    escalate: n/a
+  - node: account
+    success: bill and line test read
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: billing or diagnostics down -> continue without that input
+    escalate: n/a
+  - node: triage
+    success: next step chosen (bill explain, dispatch, offers)
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: status unknown and line down -> no truck roll, agent follows up
+  - node: bill_explain
+    success: every line tied to a tariff retrieved as of the bill period
+    retry: n/a (idempotent search)
+    compensate: n/a
+    degrade: tariffs unavailable -> lines listed, flagged for follow-up; injected bill text neutralised
+    escalate: n/a
+  - node: dispatch
+    success: field dispatch with context pack (path, equipment, diagnostics, incidents, safety)
+    retry: "gateway backoff; idempotency key dispatch:<account>:<date>"
+    compensate: "cancel dispatch in field service (no-access or self-resolved)"
+    degrade: field service down -> no booking, honest answer
+    escalate: n/a
+  - node: offers
+    success: offers only when no outage and not a service complaint
+    retry: gateway backoff
+    compensate: n/a
+    degrade: offer engine down -> no offers
+    escalate: n/a
+  - node: respond
+    success: model answer passing upsell, freshness and citation guards
+    retry: fallback deployment
+    compensate: n/a
+    degrade: models down or guard failure -> template
+    escalate: n/a
+  - node: noc_summary
+    success: incidents and blast radius (current state + what-if) summarised
+    retry: fallback deployment
+    compensate: n/a
+    degrade: models down or action language -> template summary; OSS down -> no summary
+    escalate: action requested -> refused (summarise-only)
+chaos:
+  - {fault: model, node: intake, exit: degrade, invariant: "keyword intent + template; confirmed outage and ETA still stated"}
+  - {fault: "sor:oss", node: status, exit: degrade, invariant: "status unknown disclosed; no dispatch; no offers"}
+  - {fault: retrieval, node: bill_explain, exit: degrade, invariant: "no tariff citations claimed; lines flagged for follow-up"}
+  - {fault: jailbreak, node: bill_explain, exit: degrade, invariant: "injected bill text neutralised; never echoed"}
+eval:
+  golden: evals/golden.jsonl
+  suite: outage_care.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.95"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"

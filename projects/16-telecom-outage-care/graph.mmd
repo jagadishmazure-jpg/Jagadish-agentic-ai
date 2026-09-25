@@ -1,0 +1,34 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	intake(intake)
+	status(status)
+	account(account)
+	triage(triage)
+	bill_explain(bill_explain)
+	dispatch(dispatch)
+	offers(offers)
+	respond(respond)
+	noc_summary(noc_summary)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> intake;
+	account --> triage;
+	bill_explain --> offers;
+	dispatch --> respond;
+	intake -.-> account;
+	intake -.-> noc_summary;
+	intake -.-> status;
+	offers --> respond;
+	status --> triage;
+	triage -.-> bill_explain;
+	triage -.-> dispatch;
+	triage -.-> offers;
+	noc_summary --> __end__;
+	respond --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
