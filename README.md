@@ -31,6 +31,7 @@ generated `DOCTRINE.md`; CI blocks promotion if any of it is missing or the eval
 | 08 | [contract-review](projects/08-contract-review) | Playbook-based contract risk review | Evaluator-optimizer loop + guardrails + offline eval gate (precision/recall) | ✅ Built |
 | 09 | [collections-agent](projects/09-collections-agent) | Overdue-invoice outreach and payment plans | Governance: least-privilege tool identities + HITL interrupt + hash-chained audit | ✅ Built |
 | 10 | [supply-chain-multi-agent](projects/10-supply-chain-multi-agent) | Replenishment: forecast, stock, sourcing, approved PO | Supervisor multi-agent + parallel `Send` + critic loop + HITL | ✅ Built |
+| 11 | [customer-care-e2e](projects/11-customer-care-e2e) | "My shipment is late, can I get a refund?" end to end | FastAPI BFF (auth, channel claim, rate limit, SSE) + planner/critic/HITL-with-SLA graph + outbox writes + Docker/ACA | ✅ Built |
 
 ## Architecture: four planes and the shared platform
 
@@ -95,6 +96,7 @@ ladder.
 | [08-contract-review](projects/08-contract-review/DOCTRINE.md) | L3 | none (retrieval only) | legal-playbook (ACL) | 3 | 6 | 3 | 12 | 0.75 | 1.00 | 0.00 | First-pass review time (-60% vs manual) |
 | [09-collections-agent](projects/09-collections-agent/DOCTRINE.md) | L4 | crm, payments | none (by design) | 4 | 11 | 4 | 13 | 1.00 | n/a | 0.00 | Promise-to-pay / plan acceptance (+15% vs manual outreach (holdout)) |
 | [10-supply-chain-multi-agent](projects/10-supply-chain-multi-agent/DOCTRINE.md) | L4 | analytics, erp, suppliers | none (by design) | 4 | 8 | 4 | 17 | 1.00 | n/a | 0.00 | Planner time per replenishment decision (-60% vs manual three-screen process) |
+| [11-customer-care-e2e](projects/11-customer-care-e2e/DOCTRINE.md) | L5 | crm, oms, payments | care-policy (ACL), crm-case-history (per request) (ACL) | 5 | 10 | 5 | 21 | 1.00 | 1.00 | 0.00 | Late-delivery refund containment (>= 70% closed without a human) |
 <!-- doctrine-matrix:end -->
 
 Notes on the numbers:
@@ -164,6 +166,7 @@ python projects/05-invoice-po-matching/run.py
 python projects/04-sales-meeting-prep/run.py
 python projects/02-ticket-triage/run.py
 python projects/01-policy-qa-rag/run.py
+python projects/11-customer-care-e2e/run.py
 ```
 
 ## Using a real LLM (optional)

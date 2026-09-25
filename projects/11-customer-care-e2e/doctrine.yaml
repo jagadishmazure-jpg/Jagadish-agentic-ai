@@ -1,0 +1,148 @@
+project: 11-customer-care-e2e
+title: End-to-end customer care - "My shipment is late, can I get a refund?"
+owner: Jagadish Meduri
+industry: Retail & logistics (e-commerce customer care)
+summary: >-
+  The full request path as runnable code. A FastAPI BFF authenticates the channel and tenant
+  and rate-limits. The care graph classifies with a confidence gate and a fraud pre-route,
+  plans lanes and a tool budget, reads the order over MCP, retrieves policy as of the
+  purchase date in parallel with ACL-trimmed CRM case history, and proposes a deterministic
+  refund. A critic repairs the draft once, then escalates. Large or risky refunds go to a
+  specialist with an SLA timer that queues or denies on timeout (never pays). Money moves
+  only through an outbox worker, and the reply is honest when the provider is slow.
+maturity:
+  level: 5
+  rationale: governed autonomy end to end - small policy-true refunds pay without a human, with channel auth, rate limits, budgets, critic, SLA-timed HITL, outbox writes, tracing and a container/deployment path
+  next_rung: move checkpoints and the outbox to durable stores (Postgres / Service Bus), then raise the auto-refund limit only after a quarter of green leakage and second-contact KPIs
+kpis:
+  - {name: Late-delivery refund containment, target: ">= 70% closed without a human", measure: "threads ending refund_issued/not_eligible/status_update with no agent touch and no second contact in 7 days"}
+  - {name: Refund leakage, target: "0 refunds outside policy", measure: "weekly audit of payments vs proposal + policy edition"}
+  - {name: Honest-status rate, target: "100% of queued refunds carry a reference and no 'issued' claim", measure: "critic + reply scan on refund_queued outcomes"}
+  - {name: HITL SLA, target: "p95 decision < 4 h; 0 silent payments on timeout", measure: "interrupt -> resume/sweep timestamps"}
+roi: >-
+  Late-delivery refund contacts are high volume and repetitive. Containing them saves
+  fully loaded agent time and gives customers a faster, honest answer. The costs are
+  specialist review time for large refunds, token spend (small, since eligibility and
+  amounts are deterministic) and the platform work (BFF, MCP servers, outbox). Leakage is
+  kept at zero by construction because the model never sets amounts. Second contacts are
+  reduced by never claiming a refund moved before the provider confirms it.
+planes:
+  experience: FastAPI BFF - bearer-token auth stub, channel claim, tenant header check, token-bucket rate limit per tenant+channel, JSON and SSE streaming endpoints, specialist approval console endpoint, SLA sweep job endpoint; APIM in the Azure sketch
+  agent: LangGraph care graph (classify -> plan -> order -> [policy || history] -> refund -> critic -> human_approval -> finalize | handoff) with checkpoints and interrupt()
+  knowledge: care-policy corpus on the shared ContextBuilder - temporal editions retrieved as-of the purchase date, ACL (fraud playbook fraud-ops only), sanitizer; CRM cases turned into ACL/tenant-carrying chunks and trimmed per principal
+  data: OMS (orders, scans), CRM (verify, account risk flag, case history, notes), payment provider (idempotent refunds) via MCP servers - in-process or streamable-HTTP containers - behind reader/writer gateways; outbox (Service Bus stand-in)
+systems_of_record:
+  - {name: OMS, kind: mcp, contract: "oms.get_order (read); oms.mark_order_refunded (write, idempotent)", access: read_write}
+  - {name: CRM, kind: mcp, contract: "crm.verify_customer, crm.get_account, crm.get_contact_history (read); crm.add_case_note (write)", access: read_write}
+  - {name: Payment provider, kind: mcp, contract: "payments.issue_refund (write; provider dedupes on idempotency key)", access: write}
+  - {name: Refund outbox, kind: event_stream, contract: "outbox command refund:<order> -> worker.dispatch (Service Bus queue with duplicate detection in Azure)", access: read_write}
+knowledge:
+  corpora:
+    - name: care-policy
+      owner: Jagadish Meduri (care policy product)
+      acl: "CARE-LATE-*, CARE-AUTO-1, CARE-COMMS-1 everyone; CARE-FRAUD-INT fraud-ops only"
+      temporal: late-delivery 2025 and 2026 editions (valid_from/valid_to); retrieved as-of the order purchase date
+      refresh_sla: event-driven on policy publish; semantic cache invalidated by corpus version
+      sensitivity: internal
+    - name: crm-case-history (per request)
+      owner: Jagadish Meduri (CRM data product)
+      acl: "each case carries groups + tenant; care principal sees care cases of its own tenant only"
+      temporal: live read per request (no cache)
+      refresh_sla: real time via crm.get_contact_history
+      sensitivity: confidential (PII redacted by the sanitizer)
+contracts:
+  mcp:
+    - "oms.get_order(order_id) -> Order"
+    - "oms.mark_order_refunded(order_id, refund_id, idempotency_key, dry_run)"
+    - "crm.verify_customer(customer_id, email) -> {verified}"
+    - "crm.get_account(account_id) -> {risk_flag, tenant}"
+    - "crm.get_contact_history(account_id) -> list[Case]"
+    - "crm.add_case_note(customer_id, note, idempotency_key, dry_run)"
+    - "payments.issue_refund(order_id, amount, idempotency_key, dry_run)"
+  a2a: []
+  notes: Fraud review is a queue handoff today; a fraud domain agent over the shared A2A contract would be the first peer.
+identities:
+  - {identity: mi-care-reader, allow: [oms.get_order, crm.verify_customer, crm.get_account, crm.get_contact_history]}
+  - {identity: mi-refund-writer, allow: [payments.issue_refund, oms.mark_order_refunded, crm.add_case_note]}
+stop_conditions:
+  - confidence below 0.6 -> clarifying question; fraud signal -> specialist handoff before any refund tool is reachable
+  - planner tool budget (<= 8 calls per request, guarded); exhausted -> escalate
+  - critic repairs a draft once; a second failure escalates to a specialist with the template reply
+  - refunds above $50, injected text in case history, missing policy evidence or critic failure stop at a human with a 4-hour SLA; timeout queues or denies and never pays
+  - only the outbox worker identity can move money; one refund per order (idempotency key refund:<order>)
+graph: care_e2e.graph:build_graph
+failure_playbook:
+  - node: classify
+    success: intent + confidence from the model, CRM risk flag read
+    retry: fallback deployment
+    compensate: n/a (read-only)
+    degrade: models down -> keyword classifier; CRM down -> no risk flag, refund forced to HITL
+    escalate: fraud signal -> specialist handoff
+  - node: plan
+    success: model plan within allowed lanes and budget
+    retry: fallback deployment
+    compensate: n/a
+    degrade: invalid plan (e.g. no policy lane) or models down -> default plan
+    escalate: n/a
+  - node: order
+    success: identity verified and order owned by the caller (schema-valid OMS payload)
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: order not on this account -> neutral 'check the number' reply (never confirm others' orders)
+    escalate: OMS/CRM down or tool budget exhausted -> case opened, honest reply, nothing changed
+  - node: policy
+    success: edition in force on the purchase date retrieved with citations
+    retry: n/a (search is idempotent; one attempt per request)
+    compensate: n/a
+    degrade: search down / no edition -> no auto-refund, specialist approval required, no citation claimed
+    escalate: n/a
+  - node: history
+    success: ACL- and tenant-trimmed case snippets, sanitised
+    retry: gateway backoff
+    compensate: n/a
+    degrade: CRM down -> proceed without history
+    escalate: instruction-like text in case history -> specialist approval
+  - node: refund
+    success: deterministic proposal (edition rules) + model-drafted reply
+    retry: fallback deployment
+    compensate: n/a (no side effects)
+    degrade: models down -> template reply
+    escalate: n/a
+  - node: critic
+    success: draft passes money-moved, citation, amount, leakage and injection checks
+    retry: one repair with the critic's issues
+    compensate: n/a
+    degrade: models down -> template repair
+    escalate: still failing -> template reply + specialist approval
+  - node: human_approval
+    success: care specialist approves or denies (agents cannot approve)
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: SLA expired -> queue for review (or deny by config); never pays
+  - node: finalize
+    success: refund dispatched via outbox and confirmed by the provider
+    retry: outbox worker redelivers (provider dedupes on the key)
+    compensate: n/a - reply never claims money moved before confirmation
+    degrade: provider slow/down -> command stays queued, reply gives reference CS-<order>
+    escalate: n/a
+  - node: handoff
+    success: clarify / routed / not-found reply with reference
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: fraud, other intents, SoR down and budget exhaustion land in the specialist queue
+chaos:
+  - {fault: model, node: classify, exit: degrade, invariant: "keyword classifier + template drafts; same $48.99 refund paid exactly once"}
+  - {fault: retrieval, node: policy, exit: degrade, invariant: "no auto refund; paused for specialist approval; nothing paid"}
+  - {fault: "sor:oms", node: order, exit: escalate, invariant: "case opened with honest reply; nothing paid or invented"}
+  - {fault: "sor:payments", node: finalize, exit: degrade, invariant: "refund command queued in the outbox; reply gives a reference and never says issued"}
+  - {fault: jailbreak, node: history, exit: escalate, invariant: "injected CRM case text neutralised; refund paused for a human; nothing paid"}
+eval:
+  golden: evals/golden.jsonl
+  suite: care_e2e.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.95"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"

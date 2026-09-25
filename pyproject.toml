@@ -40,7 +40,7 @@ addopts = "-q --import-mode=importlib"
 testpaths = ["shared", "projects"]
 # Project folders have hyphens (e.g. 03-refund-agent), so each project's
 # importable package lives one level down and is put on the path here.
-pythonpath = [".", "projects/03-refund-agent", "projects/10-supply-chain-multi-agent", "projects/01-policy-qa-rag", "projects/02-ticket-triage", "projects/04-sales-meeting-prep", "projects/05-invoice-po-matching", "projects/06-incident-investigator", "projects/07-rfp-response", "projects/08-contract-review", "projects/09-collections-agent"]
+pythonpath = [".", "projects/03-refund-agent", "projects/10-supply-chain-multi-agent", "projects/01-policy-qa-rag", "projects/02-ticket-triage", "projects/04-sales-meeting-prep", "projects/05-invoice-po-matching", "projects/06-incident-investigator", "projects/07-rfp-response", "projects/08-contract-review", "projects/09-collections-agent", "projects/11-customer-care-e2e"]
 
 [tool.ruff]
 line-length = 100
@@ -52,4 +52,4 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 ignore = ["RUF001"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["shared", "refund_agent", "supply_chain", "policy_qa", "ticket_triage", "meeting_prep", "invoice_match", "incident_agent", "rfp_agent", "contract_review", "collections_agent"]
+known-first-party = ["shared", "refund_agent", "supply_chain", "policy_qa", "ticket_triage", "meeting_prep", "invoice_match", "incident_agent", "rfp_agent", "contract_review", "collections_agent", "care_e2e"]

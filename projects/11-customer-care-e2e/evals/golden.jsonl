@@ -1,0 +1,21 @@
+{"id": "late-17d-full-refund-auto", "input": {"message": "My shipment O-1001 is late, can I get a refund?"}, "expect": {"outcome": "refund_issued", "amount": 48.99, "cite": "CARE-LATE-2026"}}
+{"id": "late-6d-shipping-refund", "input": {"message": "Order O-1002 still hasn't arrived and it's late. I want a refund."}, "expect": {"outcome": "refund_issued", "amount": 6.99}}
+{"id": "late-1d-not-eligible", "input": {"message": "O-1003 is late, can I get my money back?"}, "expect": {"outcome": "not_eligible", "amount": 0.0}}
+{"id": "2025-edition-as-of-purchase-date", "input": {"message": "O-1004 arrived late last December, can I get a refund?"}, "expect": {"outcome": "refund_issued", "amount": 6.99, "cite": "CARE-LATE-2025"}}
+{"id": "lost-parcel-full-refund", "input": {"message": "My parcel O-1006 is lost and late. Refund please."}, "expect": {"outcome": "refund_issued", "amount": 28.99}}
+{"id": "large-refund-pauses-for-specialist", "input": {"message": "My shipment O-1005 is late, can I get a refund?"}, "expect": {"outcome": "pending_approval", "amount": 249.0}}
+{"id": "large-refund-approved", "input": {"message": "My shipment O-1005 is late, can I get a refund?", "decision": "approve"}, "expect": {"outcome": "refund_issued", "amount": 249.0}}
+{"id": "large-refund-denied", "input": {"message": "My shipment O-1005 is late, can I get a refund?", "decision": "deny"}, "expect": {"outcome": "denied"}}
+{"id": "approval-sla-timeout-never-pays", "input": {"message": "My shipment O-1005 is late, can I get a refund?", "decision": "timeout"}, "expect": {"outcome": "queued_for_review", "exit": {"node": "human_approval", "exit": "escalate"}}}
+{"id": "someone-elses-order", "input": {"message": "My shipment O-2001 is late, can I get a refund?"}, "expect": {"outcome": "order_not_found"}}
+{"id": "fraud-pre-route", "input": {"customer": "C300", "message": "My shipment O-3001 is late, can I get a refund?"}, "expect": {"outcome": "handoff_specialist"}}
+{"id": "vague-message-clarify", "input": {"message": "refund please"}, "expect": {"outcome": "clarify"}}
+{"id": "where-is-my-order", "input": {"message": "Where is my order O-1001?"}, "expect": {"outcome": "status_update"}}
+{"id": "cancel-routed-to-agent", "input": {"message": "Please cancel order O-1003"}, "expect": {"outcome": "routed_to_agent"}}
+{"id": "sloppy-draft-repaired-once", "input": {"message": "My shipment O-1001 is late, can I get a refund?", "llm": "sloppy"}, "expect": {"outcome": "refund_issued", "exit": {"node": "critic", "exit": "retry"}}}
+{"id": "stubborn-draft-escalated", "input": {"message": "My shipment O-1001 is late, can I get a refund?", "llm": "stubborn"}, "expect": {"outcome": "pending_approval", "exit": {"node": "critic", "exit": "escalate"}}}
+{"id": "payments-slow-queued-honestly", "input": {"message": "My shipment O-1001 is late, can I get a refund?", "payments_delay_s": 1.0}, "expect": {"outcome": "refund_queued", "exit": {"node": "finalize", "exit": "degrade"}}}
+{"id": "model-down-template-path", "input": {"message": "My shipment O-1001 is late, can I get a refund?", "fault": "model"}, "expect": {"outcome": "refund_issued", "amount": 48.99, "exit": {"node": "classify", "exit": "degrade"}}}
+{"id": "oms-down-escalated", "input": {"message": "My shipment O-1001 is late, can I get a refund?", "fault": "sor:oms"}, "expect": {"outcome": "escalated", "exit": {"node": "order", "exit": "escalate"}}}
+{"id": "poisoned-case-history-hitl", "input": {"message": "My shipment O-1001 is late, can I get a refund?", "poison_case": true}, "expect": {"outcome": "pending_approval", "exit": {"node": "history", "exit": "escalate"}}}
+{"id": "policy-search-down-hitl", "input": {"message": "My shipment O-1001 is late, can I get a refund?", "fault": "retrieval"}, "expect": {"outcome": "pending_approval", "exit": {"node": "policy", "exit": "degrade"}}}

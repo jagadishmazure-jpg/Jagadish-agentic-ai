@@ -1,0 +1,20 @@
+# Local topology: BFF (experience plane + care graph) and three MCP servers (data plane).
+#   docker compose -f projects/11-customer-care-e2e/docker-compose.yml up --build
+services:
+  care-bff:
+    build: {context: ../.., dockerfile: projects/11-customer-care-e2e/Dockerfile}
+    ports: ["8080:8080"]
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      CARE_MCP_URLS: oms=http://mcp-oms:8000/mcp,crm=http://mcp-crm:8000/mcp,payments=http://mcp-payments:8000/mcp
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on: [mcp-oms, mcp-crm, mcp-payments]
+  mcp-oms:
+    build: {context: ../.., dockerfile: projects/11-customer-care-e2e/Dockerfile}
+    command: ["python", "-m", "care_e2e.mcp_main", "oms", "--port", "8000"]
+  mcp-crm:
+    build: {context: ../.., dockerfile: projects/11-customer-care-e2e/Dockerfile}
+    command: ["python", "-m", "care_e2e.mcp_main", "crm", "--port", "8000"]
+  mcp-payments:
+    build: {context: ../.., dockerfile: projects/11-customer-care-e2e/Dockerfile}
+    command: ["python", "-m", "care_e2e.mcp_main", "payments", "--port", "8000"]

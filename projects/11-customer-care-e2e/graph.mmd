@@ -1,0 +1,37 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	classify(classify)
+	plan(plan)
+	order(order)
+	policy(policy)
+	history(history)
+	refund(refund)
+	critic(critic)
+	human_approval(human_approval)
+	finalize(finalize)
+	handoff(handoff)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> classify;
+	classify -.-> handoff;
+	classify -.-> plan;
+	critic -.-> finalize;
+	critic -.-> human_approval;
+	history --> refund;
+	human_approval --> finalize;
+	order -.-> handoff;
+	order -.-> history;
+	order -.-> policy;
+	order -.-> refund;
+	plan --> order;
+	policy --> refund;
+	refund --> critic;
+	finalize --> __end__;
+	handoff --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

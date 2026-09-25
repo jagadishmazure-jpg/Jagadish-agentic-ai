@@ -1,0 +1,20 @@
+{
+  "project": "11-customer-care-e2e",
+  "n": 21,
+  "metrics": {
+    "task_success": 1.0,
+    "groundedness": 1.0,
+    "policy_violation_rate": 0.0,
+    "tool_error_rate": 0.021277,
+    "cost_per_task": 7e-05
+  },
+  "thresholds": {
+    "task_success": ">=0.95",
+    "groundedness": ">=0.95",
+    "policy_violation_rate": "<=0",
+    "cost_per_task": "<=0.002"
+  },
+  "passed": true,
+  "violations": [],
+  "failed_cases": []
+}
