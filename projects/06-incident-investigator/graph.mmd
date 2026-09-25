@@ -1,0 +1,30 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	open_case(open_case)
+	write_report(write_report)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> open_case;
+	investigator\3a__end__ --> write_report;
+	open_case --> investigator\3a__start__;
+	write_report --> __end__;
+	subgraph investigator
+	investigator\3a__start__(<p>__start__</p>)
+	investigator\3amodel(model)
+	investigator\3atools(tools)
+	investigator\3aGuardrailMiddleware\2ebefore_model(GuardrailMiddleware.before_model)
+	investigator\3a__end__(<p>__end__</p>)
+	investigator\3aGuardrailMiddleware\2ebefore_model -.-> investigator\3a__end__;
+	investigator\3aGuardrailMiddleware\2ebefore_model -.-> investigator\3amodel;
+	investigator\3a__start__ --> investigator\3aGuardrailMiddleware\2ebefore_model;
+	investigator\3amodel -.-> investigator\3a__end__;
+	investigator\3amodel -.-> investigator\3atools;
+	investigator\3atools -.-> investigator\3aGuardrailMiddleware\2ebefore_model;
+	end
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
