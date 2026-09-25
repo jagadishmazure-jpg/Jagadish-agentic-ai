@@ -94,3 +94,27 @@ pytest projects/07-rfp-response
    caching repeated questions, a cheaper model for first drafts, and a stronger model for the
    critic. Evals measure citation accuracy, facet coverage, compliance hits, and reviewer edit
    distance.
+
+## Doctrine compliance
+
+This agent meets the portfolio's production-readiness doctrine. The full card is in
+[`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml).
+
+What the doctrine upgrade changed:
+
+- **Shared context builder.** The answer library is now a governed knowledge product on the
+  shared `ContextBuilder` (`rfp_agent/library.py`):
+  - hybrid BM25 + vector retrieval with RRF
+  - deal-desk-only pricing entries, ACL-trimmed so they never reach presales drafts
+  - SLA editions resolved as-of the RFP submission date (pass `as_of` in the input)
+  - sanitised entry text
+- **Degrade exits.** If the library is down, every question goes to an SME; nothing is
+  answered from model memory. If every model is down, the planner uses the deterministic
+  parser and the drafter uses verbatim cited library sentences.
+- **Tracing and exit records.** OTel spans cover the parallel section workers. Exits are
+  collected across the subgraphs.
+
+```bash
+python -m evals --project 07
+pytest projects/07-rfp-response/tests/test_chaos.py
+```

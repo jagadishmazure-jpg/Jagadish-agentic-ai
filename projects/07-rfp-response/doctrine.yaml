@@ -1,0 +1,81 @@
+project: 07-rfp-response
+title: RFP / security-questionnaire response agent
+owner: Jagadish Meduri
+industry: B2B SaaS sales / presales and security-assurance teams
+summary: >-
+  Incoming RFPs are split into sections and each question is drafted from the approved answer
+  library only. A critic checks citations and coverage, and a compliance gate strips banned
+  claims and flags export-control terms. Anything the library cannot support goes to an SME.
+maturity:
+  level: 3
+  rationale: governed knowledge product + planner/worker/critic with deterministic compliance gate; read-only, human submits
+  next_rung: MCP write to the RFP portal / CRM opportunity (HITL) and A2A request to the legal-review agent for export-control hits
+kpis:
+  - {name: First-draft coverage, target: ">= 70% of questions answered from the library", measure: "accepted answers / questions"}
+  - {name: Response cycle time, target: "-50% vs baseline", measure: "RFP received -> submitted"}
+  - {name: Compliance escapes, target: "0 banned claims or unreviewed export-control terms submitted", measure: "eval + submission audit"}
+roi: >-
+  Value is presales and SME hours saved per RFP, plus more RFPs bid at the same headcount, plus
+  lower legal risk from banned claims that are blocked before submission. Subtract token cost
+  and library curation. SME escalations are counted as remaining work, not hidden.
+planes:
+  experience: presales workspace / Teams; draft markdown with per-answer sources, SME and legal flags
+  agent: LangGraph planner -> Send per section -> worker subgraph (retrieve -> draft -> critic loop) -> compliance gate -> assemble
+  knowledge: rfp-answer-library knowledge product via shared ContextBuilder (hybrid retrieval, ACL, as-of editions, sanitiser)
+  data: none at runtime (the library is the system of record for approved answers; CRM/portal write-back is the next rung)
+systems_of_record:
+  - {name: Approved answer library (content system), kind: document_store, contract: "rfp-answer-library corpus (entries with owner, ACL, validity)", access: read}
+knowledge:
+  corpora:
+    - name: rfp-answer-library
+      owner: Jagadish Meduri (presales + security assurance)
+      acl: "presales + deal-desk; pricing entries deal-desk only (trimmed before ranking)"
+      temporal: "editions with valid_from / valid_to; as_of = RFP submission date"
+      refresh_sla: weekly + on answer approval
+      sensitivity: internal; pricing confidential
+contracts:
+  mcp: []
+  a2a: []
+  notes: Read-only drafting agent; the library is served in-process by the shared ContextBuilder. A human reviews and submits the final document.
+stop_conditions:
+  - critic sends a draft back at most twice, then SME
+  - no library hit -> SME immediately (no model-memory answers)
+  - banned claims removed; export-control terms force legal review
+graph: rfp_agent.graph:build_graph
+failure_playbook:
+  - node: plan
+    success: model splits the RFP into sections/questions (schema-valid)
+    retry: fallback deployment
+    compensate: n/a
+    degrade: deterministic header/Qn parser (bad output or all models down)
+    escalate: n/a
+  - node: section_worker
+    success: each question drafted from retrieved library entries and passes the critic
+    retry: critic loop (max 2 revisions); fallback model deployment
+    compensate: n/a
+    degrade: library outage -> SME for every question; models down -> verbatim cited library sentences; injected text neutralised
+    escalate: no library hit / budget spent -> needs_sme
+  - node: compliance
+    success: no banned claims or export-control terms
+    retry: n/a (deterministic)
+    compensate: banned sentences removed; answer with nothing citable left -> SME
+    degrade: n/a
+    escalate: export-control terms flagged for legal
+  - node: assemble
+    success: ready document with sources appendix
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: needs_sme / legal_review_required status for the human owner
+chaos:
+  - {fault: model, node: plan, exit: degrade, invariant: "deterministic plan + verbatim cited drafts; same 8 answered, Q8 to SME"}
+  - {fault: retrieval, node: section_worker, exit: degrade, invariant: "library down -> every question to SME, nothing drafted from model memory"}
+  - {fault: jailbreak, node: section_worker, exit: degrade, invariant: "poisoned library entry neutralised; no admin text in the document"}
+eval:
+  golden: evals/golden.jsonl
+  suite: rfp_agent.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.9"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.003"

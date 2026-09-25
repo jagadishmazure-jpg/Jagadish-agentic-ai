@@ -6,6 +6,12 @@ Subgraph: next_question -> retrieve -> draft 🤖 -> critique
               pass -> accept -> next_question
               fail & budget left -> draft (with feedback)
               fail & (no KB hit | budget spent) -> needs_sme -> next_question
+
+Doctrine wiring: retrieval is the shared ContextBuilder over the approved answer library
+(hybrid search, ACL - deal-desk pricing never reaches presales drafts, as-of editions,
+sanitised text); a library outage sends questions to SMEs (degrade), never to model memory.
+The model is a fallback chain: the planner degrades to the deterministic parser and the
+drafter to verbatim cited library sentences. Exits go to ``state["exits"]``.
 """
 
 from __future__ import annotations
@@ -13,6 +19,7 @@ from __future__ import annotations
 import json
 import operator
 import re
+from datetime import date
 from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.language_models import BaseChatModel
@@ -22,8 +29,14 @@ from langgraph.types import Send
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from rfp_agent import llm as prompts
-from rfp_agent.knowledge import KB, parse_rfp
-from rfp_agent.rules import CITE_RE, compliance_scan, critique, retrieve
+from rfp_agent.knowledge import parse_rfp
+from rfp_agent.library import builder as library_builder
+from rfp_agent.library import search
+from rfp_agent.llm import mock_draft
+from rfp_agent.rules import CITE_RE, compliance_scan, critique
+from shared.context import ContextBuilder, RetrievalError
+from shared.observability import install
+from shared.resilience import ModelUnavailableError, exit_record, with_fallback
 
 MAX_REVISIONS = 2  # critic can send a draft back at most twice
 
@@ -40,19 +53,23 @@ class Section(BaseModel):
 
 class SectionState(TypedDict, total=False):
     section: str
+    kb_as_of: str | None
     questions: list[dict[str, str]]
     idx: int
     current: dict[str, Any]
     answers: Annotated[list[dict[str, Any]], operator.add]
+    exits: Annotated[list[dict[str, str]], operator.add]
 
 
 class RfpState(TypedDict, total=False):
     rfp_text: str
+    as_of: str | None  # submission date: answers use the library edition valid then
     sections: list[dict[str, Any]]
     answers: Annotated[list[dict[str, Any]], operator.add]
     final_answers: list[dict[str, Any]]
     compliance: dict[str, Any]
     document: dict[str, Any]
+    exits: Annotated[list[dict[str, str]], operator.add]
 
 
 class ResponseDoc(BaseModel):
@@ -69,7 +86,9 @@ def _qnum(qid: str) -> int:
     return int(re.sub(r"\D", "", qid) or 0)
 
 
-def build_section_graph(llm: BaseChatModel):
+def build_section_graph(llm: BaseChatModel, kb: ContextBuilder | None = None):
+    kb = kb or library_builder()
+
     def next_question(state: SectionState) -> dict[str, Any]:
         idx = state.get("idx", 0)
         if idx >= len(state["questions"]):
@@ -82,21 +101,49 @@ def build_section_graph(llm: BaseChatModel):
 
     def retrieve_kb(state: SectionState) -> dict[str, Any]:
         cur = state["current"]
-        return {"current": {**cur, "retrieved": retrieve(cur["question"])}}
+        try:
+            as_of = date.fromisoformat(state["kb_as_of"]) if state.get("kb_as_of") else None
+            entries = search(kb, cur["question"], as_of=as_of)
+        except RetrievalError as exc:
+            return {
+                "current": {**cur, "retrieved": [], "entries": {}, "kb_down": True},
+                "exits": [exit_record("section_worker", "degrade", f"{cur['id']}: {exc}")],
+            }
+        exits = [
+            exit_record("section_worker", "degrade", f"{cur['id']}: injected text neutralised")
+            for e in entries
+            if "[removed: suspected injected instruction]" in e["text"]
+        ]
+        return {
+            "current": {
+                **cur,
+                "retrieved": [e["id"] for e in entries],
+                "entries": {e["id"]: e for e in entries},
+            },
+            "exits": exits,
+        }
 
     def draft(state: SectionState) -> dict[str, Any]:
         cur = state["current"]
         payload = {
             "question": cur["question"],
-            "kb": [{"id": k, **KB[k]} for k in cur["retrieved"]],
+            "kb": [cur["entries"][k] for k in cur["retrieved"]],
             "feedback": cur["issues"],
         }
-        text = str(
-            llm.invoke(
-                [SystemMessage(prompts.DRAFT_SYSTEM), HumanMessage(json.dumps(payload))]
-            ).content
-        ).strip()
-        return {"current": {**cur, "draft": text, "attempts": cur["attempts"] + 1}}
+        exits = []
+        try:
+            text = str(
+                llm.invoke(
+                    [SystemMessage(prompts.DRAFT_SYSTEM), HumanMessage(json.dumps(payload))]
+                ).content
+            ).strip()
+        except ModelUnavailableError:
+            text = mock_draft(payload)  # verbatim cited library sentences
+            exits = [exit_record("section_worker", "degrade", f"{cur['id']}: verbatim draft")]
+        return {
+            "current": {**cur, "draft": text, "attempts": cur["attempts"] + 1},
+            "exits": exits,
+        }
 
     def critic(state: SectionState) -> dict[str, Any]:
         cur = state["current"]
@@ -121,7 +168,8 @@ def build_section_graph(llm: BaseChatModel):
             "citations": sorted(set(CITE_RE.findall(cur["draft"]))),
             "attempts": cur["attempts"],
             "status": status,
-            "issues": cur["issues"],
+            "issues": cur["issues"]
+            + (["knowledge base unavailable"] if cur.get("kb_down") else []),
         }
         return {"answers": [ans], "idx": state["idx"] + 1}
 
@@ -141,22 +189,32 @@ def build_section_graph(llm: BaseChatModel):
     g.add_conditional_edges("critique", after_critic, ["accept", "draft", "needs_sme"])
     g.add_edge("accept", "next_question")
     g.add_edge("needs_sme", "next_question")
-    return g.compile()
+    return g.compile(name="section_worker")
 
 
-def build_graph(llm: BaseChatModel | None = None):
+def build_graph(llm: BaseChatModel | None = None, kb: ContextBuilder | None = None):
+    install()
     if llm is None:
         from shared.llm import get_llm
 
         llm = get_llm(mock_responder=prompts.mock_responder)
-    section_graph = build_section_graph(llm)
+    llm = with_fallback(llm)
+    kb = kb or library_builder()
+    titles = {c.chunk_id: c.title for c in kb.corpus.chunks}
+    section_graph = build_section_graph(llm, kb)
 
     def plan(state: RfpState) -> dict[str, Any]:
-        raw = str(
-            llm.invoke(
-                [SystemMessage(prompts.PLAN_SYSTEM), HumanMessage(state["rfp_text"])]
-            ).content
-        )
+        try:
+            raw = str(
+                llm.invoke(
+                    [SystemMessage(prompts.PLAN_SYSTEM), HumanMessage(state["rfp_text"])]
+                ).content
+            )
+        except ModelUnavailableError:
+            return {
+                "sections": parse_rfp(state["rfp_text"]),
+                "exits": [exit_record("plan", "degrade", "model unavailable: deterministic parse")],
+            }
         try:
             m = re.search(r"\[.*\]", raw, re.S)
             sections = TypeAdapter(list[Section]).validate_json(m.group(0) if m else raw)
@@ -167,7 +225,10 @@ def build_graph(llm: BaseChatModel | None = None):
 
     def fan_out(state: RfpState) -> list[Send]:
         return [
-            Send("section_worker", {"section": s["name"], "questions": s["questions"]})
+            Send(
+                "section_worker",
+                {"section": s["name"], "questions": s["questions"], "kb_as_of": state.get("as_of")},
+            )
             for s in state["sections"]
         ]
 
@@ -219,7 +280,10 @@ def build_graph(llm: BaseChatModel | None = None):
                     md.append(f"> 🔒 Legal review: export-control terms {a['export_control']}")
                 md.append("")
         cited = sorted({c for a in ans for c in a["citations"]})
-        md += ["## Appendix: knowledge-base sources", *[f"- {k}: {KB[k]['title']}" for k in cited]]
+        md += [
+            "## Appendix: knowledge-base sources",
+            *[f"- {k}: {titles.get(k, k)}" for k in cited],
+        ]
         doc = ResponseDoc(
             status=status,
             markdown="\n".join(md),
@@ -229,7 +293,12 @@ def build_graph(llm: BaseChatModel | None = None):
             export_control_hits=comp["export_control_hits"],
             kb_ids_cited=cited,
         )
-        return {"document": doc.model_dump()}
+        exits = []
+        if sme:
+            exits.append(exit_record("assemble", "escalate", f"SME input needed: {sme}"))
+        if comp["export_control_hits"]:
+            exits.append(exit_record("assemble", "escalate", "export-control terms: legal review"))
+        return {"document": doc.model_dump(), "exits": exits}
 
     g = StateGraph(RfpState)
     g.add_node("plan", plan)
@@ -241,4 +310,6 @@ def build_graph(llm: BaseChatModel | None = None):
     g.add_edge("section_worker", "compliance")
     g.add_edge("compliance", "assemble")
     g.add_edge("assemble", END)
-    return g.compile()
+    compiled = g.compile(name="rfp-response")
+    compiled.kb = kb
+    return compiled
