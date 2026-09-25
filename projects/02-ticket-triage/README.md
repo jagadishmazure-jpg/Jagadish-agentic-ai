@@ -87,3 +87,26 @@ pytest projects/02-ticket-triage
 5. **Operational metrics.** Auto-route rate, misroute rate (from agent re-queues), time to first
    response, clarify-to-resolution conversion, and pages per week. Misroutes feed back into
    the eval set.
+
+## Doctrine compliance
+
+This agent meets the portfolio's production-readiness doctrine. The full card is in
+[`DOCTRINE.md`](DOCTRINE.md), generated from [`doctrine.yaml`](doctrine.yaml).
+
+What the doctrine upgrade changed:
+
+- **Service desk behind MCP.** Routed tickets are now written to the service desk through the
+  ticketing MCP server (`ticketing.create_ticket`), via a `ToolGateway`. The gateway runs as
+  identity `mi-ticket-triage` with a one-tool allowlist and validates the payload schema.
+  Writes are idempotent on `triage:<ticket id>`, and only redacted text is ever sent.
+- **Untrusted ticket text.** On top of PII redaction, the ticket is sanitised for injected
+  instructions. A suspected injection escalates to human review; it is never auto-routed.
+- **Fallback model.** If every model deployment is down, the ticket goes to the human
+  queue. The graph never guesses a route. If ticketing is down, the ticket is queued in an
+  outbox for replay and the customer still gets the acknowledgement.
+- **Tracing.** OTel spans, and every non-happy exit is recorded in `state["exits"]`.
+
+```bash
+python -m evals --project 02
+pytest projects/02-ticket-triage/tests/test_chaos.py
+```

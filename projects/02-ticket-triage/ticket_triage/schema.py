@@ -48,3 +48,4 @@ class TriageResult(BaseModel):
     repair_attempts: int = 0
     reason: str
     customer_reply: str
+    ticket_ref: str | None = None  # service-desk ticket id (None: queued in the outbox)

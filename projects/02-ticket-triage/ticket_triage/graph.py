@@ -4,6 +4,12 @@ redact_pii -> classify -> validate --invalid (<=1)--> repair -> validate
                                    --invalid again--> human_review
                           valid --> confidence gate:
                               < 0.40 human_review | < 0.60 clarify | else intent queue handler
+
+Doctrine wiring: the model is a fallback chain (all deployments down -> human queue, never a
+guessed route); ticket text is PII-redacted *and* sanitised for injected instructions (a
+suspected injection escalates to a human); routed tickets are created in the service desk
+via the ticketing MCP server through a ToolGateway (idempotent on the inbound ticket id;
+outage -> outbox for replay). Non-happy exits are appended to ``state["exits"]``.
 """
 
 from __future__ import annotations
@@ -17,6 +23,10 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from pydantic import ValidationError
 
+from shared.context import looks_like_injection, sanitize
+from shared.observability import install
+from shared.resilience import ModelUnavailableError, exit_record, with_fallback
+from shared.tools import SystemOfRecordUnavailableError
 from ticket_triage import llm as prompts
 from ticket_triage.pii import redact
 from ticket_triage.schema import (
@@ -28,6 +38,7 @@ from ticket_triage.schema import (
     TicketClassification,
     TriageResult,
 )
+from ticket_triage.sor import TicketingBackend, build_gateway
 
 ACKS = {
     "billing_queue": "Our billing team is reviewing the charge and will reply within {sla}h.",
@@ -49,8 +60,11 @@ class TriageState(TypedDict, total=False):
     classification: dict[str, Any] | None
     validation_errors: str
     repair_attempts: int
+    injection: bool
+    model_down: bool
     result: dict[str, Any]
     trace: Annotated[list[str], operator.add]
+    exits: Annotated[list[dict[str, str]], operator.add]
 
 
 def _parse(raw: str) -> tuple[TicketClassification | None, str]:
@@ -64,27 +78,68 @@ def _parse(raw: str) -> tuple[TicketClassification | None, str]:
         return None, errs
 
 
-def build_graph(llm: BaseChatModel | None = None):
+def build_graph(
+    llm: BaseChatModel | None = None,
+    ticketing: TicketingBackend | None = None,
+    outbox: list[dict[str, Any]] | None = None,
+):
+    install()
     if llm is None:
         from shared.llm import get_llm
 
         llm = get_llm(mock_responder=prompts.mock_responder)
+    llm = with_fallback(llm)
+    ticketing = ticketing if ticketing is not None else TicketingBackend()
+    outbox = outbox if outbox is not None else []
+    gw = build_gateway(ticketing)
+
+    def open_ticket(state: TriageState, queue: str, priority: str, summary: str):
+        """Create the ticket in the service desk; degrade to the outbox on outage."""
+        args = {
+            "queue": queue,
+            "subject": state["redacted"].splitlines()[0][:120],
+            "summary": summary,
+            "priority": priority,
+            "idempotency_key": f"triage:{state['ticket']['id']}",
+        }
+        try:
+            created = gw.call("ticketing", "create_ticket", dry_run=False, **args)
+            return created["ticket_id"], []
+        except SystemOfRecordUnavailableError as exc:
+            outbox.append({"system": "ticketing", **args})
+            return None, [exit_record(queue, "degrade", f"ticketing unavailable, queued: {exc}")]
 
     def redact_pii(state: TriageState) -> dict[str, Any]:
         t = state["ticket"]
         text, _vault, counts = redact(f"Subject: {t['subject']}\n\n{t['body']}")
         # The vault stays in memory of this node only: never checkpointed, logged or prompted.
+        injection = looks_like_injection(text)
+        exits = []
+        if injection:  # ticket text is untrusted data: neutralise, then route to a human
+            text = sanitize(text, redact_pii=False).text
+            exits = [exit_record("redact_pii", "escalate", "suspected prompt injection")]
         return {
             "redacted": text,
             "redactions": dict(counts),
             "repair_attempts": 0,
+            "injection": injection,
+            "model_down": False,
             "trace": ["redact_pii"],
+            "exits": exits,
         }
 
     def classify(state: TriageState) -> dict[str, Any]:
-        raw = llm.invoke(
-            [SystemMessage(prompts.CLASSIFY_SYSTEM), HumanMessage(state["redacted"])]
-        ).content
+        try:
+            raw = llm.invoke(
+                [SystemMessage(prompts.CLASSIFY_SYSTEM), HumanMessage(state["redacted"])]
+            ).content
+        except ModelUnavailableError:
+            return {
+                "raw_output": "",
+                "model_down": True,
+                "trace": ["classify"],
+                "exits": [exit_record("classify", "degrade", "model unavailable: human queue")],
+            }
         return {"raw_output": str(raw), "trace": ["classify"]}
 
     def validate(state: TriageState) -> dict[str, Any]:
@@ -96,7 +151,23 @@ def build_graph(llm: BaseChatModel | None = None):
         }
 
     def repair(state: TriageState) -> dict[str, Any]:
-        raw = llm.invoke(
+        try:
+            raw = _repair_call(state)
+        except ModelUnavailableError:
+            return {
+                "model_down": True,
+                "repair_attempts": state["repair_attempts"] + 1,
+                "trace": ["repair"],
+                "exits": [exit_record("repair", "degrade", "model unavailable: human queue")],
+            }
+        return {
+            "raw_output": str(raw),
+            "repair_attempts": state["repair_attempts"] + 1,
+            "trace": ["repair"],
+        }
+
+    def _repair_call(state: TriageState) -> str:
+        return llm.invoke(
             [
                 SystemMessage(prompts.REPAIR_SYSTEM.format(errors=state["validation_errors"])),
                 HumanMessage(state["redacted"]),
@@ -104,14 +175,11 @@ def build_graph(llm: BaseChatModel | None = None):
                 HumanMessage("Return the corrected JSON only."),
             ]
         ).content
-        return {
-            "raw_output": str(raw),
-            "repair_attempts": state["repair_attempts"] + 1,
-            "trace": ["repair"],
-        }
 
     def route(state: TriageState) -> str:
         c = state["classification"]
+        if state.get("injection") or state.get("model_down"):
+            return "human_review"
         if c is None:
             return "repair" if state["repair_attempts"] < MAX_REPAIRS else "human_review"
         if c["confidence"] < HUMAN_FLOOR or c["intent"] == "other":
@@ -134,6 +202,7 @@ def build_graph(llm: BaseChatModel | None = None):
         def handler(state: TriageState) -> dict[str, Any]:
             c = state["classification"]
             sla = SLA_HOURS[c["urgency"]]
+            ref, exits = open_ticket(state, queue, c["urgency"], c["summary"])
             return {
                 "result": result(
                     state,
@@ -143,16 +212,23 @@ def build_graph(llm: BaseChatModel | None = None):
                     page_on_call=c["urgency"] == "critical",
                     reason=f"{c['intent']} ({c['confidence']:.2f}) / {c['urgency']}",
                     customer_reply=ACKS[queue].format(sla=sla),
+                    ticket_ref=ref,
                 ),
                 "trace": [queue],
+                "exits": exits,
             }
 
         return handler
 
     def clarify(state: TriageState) -> dict[str, Any]:
-        q = llm.invoke(
-            [SystemMessage(prompts.CLARIFY_SYSTEM), HumanMessage(state["redacted"])]
-        ).content
+        exits = []
+        try:
+            q = llm.invoke(
+                [SystemMessage(prompts.CLARIFY_SYSTEM), HumanMessage(state["redacted"])]
+            ).content
+        except ModelUnavailableError:
+            q = "Could you share a bit more detail - what were you trying to do, and what happened?"
+            exits = [exit_record("clarify", "degrade", "model unavailable: template question")]
         c = state["classification"]
         return {
             "result": result(
@@ -162,16 +238,23 @@ def build_graph(llm: BaseChatModel | None = None):
                 customer_reply=str(q),
             ),
             "trace": ["clarify"],
+            "exits": exits,
         }
 
     def human_review(state: TriageState) -> dict[str, Any]:
         c = state.get("classification")
-        if c is None:
+        if state.get("injection"):
+            reason = "suspected prompt injection in ticket text"
+        elif state.get("model_down"):
+            reason = "classifier unavailable (all model deployments down)"
+        elif c is None:
             reason = f"schema validation failed after repair: {state['validation_errors']}"
         elif c["intent"] == "other":
             reason = "intent 'other' has no automated queue"
         else:
             reason = f"confidence {c['confidence']:.2f} < {HUMAN_FLOOR}"
+        priority = c["urgency"] if c else "medium"
+        ref, exits = open_ticket(state, "triage_human_queue", priority, reason)
         return {
             "result": result(
                 state,
@@ -179,8 +262,10 @@ def build_graph(llm: BaseChatModel | None = None):
                 queue="triage_human_queue",
                 reason=reason,
                 customer_reply="Thanks! A member of our team will review your request shortly.",
+                ticket_ref=ref,
             ),
             "trace": ["human_review"],
+            "exits": exits,
         }
 
     g = StateGraph(TriageState)
@@ -204,4 +289,6 @@ def build_graph(llm: BaseChatModel | None = None):
     )
     for terminal in ["clarify", "human_review", *QUEUES.values()]:
         g.add_edge(terminal, END)
-    return g.compile()
+    compiled = g.compile(name="ticket-triage")
+    compiled.gateway, compiled.ticketing, compiled.outbox = gw, ticketing, outbox
+    return compiled

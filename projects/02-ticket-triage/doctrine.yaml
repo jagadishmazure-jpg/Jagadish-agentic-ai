@@ -1,0 +1,121 @@
+project: 02-ticket-triage
+title: Support ticket triage router
+owner: Jagadish Meduri
+industry: Cross-industry (customer support / service desk)
+summary: >-
+  Every inbound ticket is PII-redacted, classified into a strict schema and routed to the right
+  queue with an SLA - or to a human when the model is unsure, unavailable, or being manipulated.
+maturity:
+  level: 3
+  rationale: LLM classification with schema validation, bounded repair and confidence gates; one idempotent write (ticket create)
+  next_rung: attach knowledge-base answer suggestions (context builder) to routed tickets and measure agent handle time
+kpis:
+  - {name: Auto-route accuracy, target: ">= 90% on golden + weekly sample", measure: "queue chosen == queue after human re-route"}
+  - {name: Time to first queue, target: "< 1 min p95", measure: "ticket received -> service-desk ticket created"}
+  - {name: PII leakage to model or ticket store, target: "0", measure: "eval + DLP scan of prompts and created tickets"}
+roi: >-
+  Value is triage-desk minutes saved per ticket plus SLA breaches avoided through correct urgency
+  paging, minus token cost and the human-review load created by low-confidence and injection
+  escalations (tracked, not hidden). Mis-routes are counted against value via re-route rate.
+planes:
+  experience: email / web form / chat intake; customer receives a queue-specific acknowledgement or clarifying question
+  agent: LangGraph router (redact -> classify -> validate -> bounded repair -> confidence gate -> queue handler)
+  knowledge: none at runtime (classification rubric lives in the prompt; KB answer suggestions are the next rung)
+  data: service desk (ServiceNow/Zendesk-like) as system of record for created tickets, via MCP
+systems_of_record:
+  - {name: Service desk, kind: mcp, contract: "ticketing.create_ticket (write, idempotency_key, dry_run default)", access: write}
+knowledge:
+  corpora: []
+  notes: No retrieval; inputs are the ticket itself, treated as untrusted data (PII-redacted and injection-sanitised before the model sees it).
+contracts:
+  mcp:
+    - "ticketing.create_ticket(queue, subject, summary, priority, idempotency_key, dry_run) -> CreatedTicket"
+  a2a: []
+  notes: Gateway identity mi-ticket-triage, allowlist = ticketing.create_ticket only; only redacted text crosses the boundary.
+identities:
+  - {identity: mi-ticket-triage, allow: [ticketing.create_ticket]}
+stop_conditions:
+  - at most 1 schema repair, then human review
+  - confidence < 0.40 or intent 'other' -> human; < 0.60 -> one clarifying question
+  - suspected prompt injection -> human review (never auto-routed)
+  - one ticket per inbound id (idempotency key triage:<id>)
+graph: ticket_triage.graph:build_graph
+failure_playbook:
+  - node: redact_pii
+    success: PII replaced with placeholders; vault never leaves the node
+    retry: n/a (deterministic)
+    compensate: n/a
+    degrade: injected instructions neutralised in the text sent to the model
+    escalate: suspected prompt injection -> human review
+  - node: classify
+    success: model returns classification JSON
+    retry: fallback deployment via breaker
+    compensate: n/a
+    degrade: all deployments down -> human queue (never a guessed route)
+    escalate: n/a
+  - node: validate
+    success: output parses into TicketClassification
+    retry: one repair attempt
+    compensate: n/a
+    degrade: n/a
+    escalate: invalid after repair / low confidence / 'other' -> human review
+  - node: repair
+    success: corrected JSON returned
+    retry: fallback deployment
+    compensate: n/a
+    degrade: model down -> human queue
+    escalate: n/a
+  - node: clarify
+    success: one clarifying question to the customer
+    retry: fallback deployment
+    compensate: n/a
+    degrade: templated clarifying question when models are down
+    escalate: n/a
+  - node: human_review
+    success: ticket created in triage_human_queue with the reason
+    retry: gateway backoff
+    compensate: n/a
+    degrade: ticketing outage -> outbox
+    escalate: is the escalation target (triage desk)
+  - node: billing_queue
+    success: billing ticket created in the service desk (idempotent on inbound id) + SLA ack
+    retry: gateway backoff on transient ticketing errors
+    compensate: n/a (create is idempotent; replay returns the same ticket)
+    degrade: ticketing outage -> ticket queued in the outbox for replay; customer still gets the ack
+    escalate: critical urgency pages on-call
+  - node: tech_support_queue
+    success: technical ticket created in the service desk (idempotent on inbound id) + SLA ack
+    retry: gateway backoff on transient ticketing errors
+    compensate: n/a (create is idempotent; replay returns the same ticket)
+    degrade: ticketing outage -> ticket queued in the outbox for replay; customer still gets the ack
+    escalate: critical urgency pages on-call
+  - node: account_security_queue
+    success: account access ticket created in the service desk (idempotent on inbound id) + SLA ack
+    retry: gateway backoff on transient ticketing errors
+    compensate: n/a (create is idempotent; replay returns the same ticket)
+    degrade: ticketing outage -> ticket queued in the outbox for replay; customer still gets the ack
+    escalate: critical urgency pages on-call
+  - node: product_feedback_queue
+    success: feature request ticket created in the service desk (idempotent on inbound id) + SLA ack
+    retry: gateway backoff on transient ticketing errors
+    compensate: n/a (create is idempotent; replay returns the same ticket)
+    degrade: ticketing outage -> ticket queued in the outbox for replay; customer still gets the ack
+    escalate: critical urgency pages on-call
+  - node: retention_queue
+    success: cancellation ticket created in the service desk (idempotent on inbound id) + SLA ack
+    retry: gateway backoff on transient ticketing errors
+    compensate: n/a (create is idempotent; replay returns the same ticket)
+    degrade: ticketing outage -> ticket queued in the outbox for replay; customer still gets the ack
+    escalate: critical urgency pages on-call
+chaos:
+  - {fault: model, node: classify, exit: degrade, invariant: "routed to the human queue with 'classifier unavailable', no guessed route"}
+  - {fault: sor, node: billing_queue, exit: degrade, invariant: "route kept, ticket queued in outbox with idempotency key triage:<id>"}
+  - {fault: jailbreak, node: redact_pii, exit: escalate, invariant: "injected ticket goes to human review, not the requested queue"}
+eval:
+  golden: evals/golden.jsonl
+  suite: ticket_triage.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.9"
+    policy_violation_rate: "<=0"
+    tool_error_rate: "<=0.05"
+    cost_per_task: "<=0.002"
