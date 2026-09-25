@@ -53,3 +53,18 @@ def test_thresholds_and_harness_metrics():
     )
     assert report.metrics["task_success"] == 0.5
     assert report.violations == ["policy_violation_rate = 0.5000 violates <= 0.0"]
+
+
+def test_every_project_carries_a_doctrine_card():
+    from shared.doctrine.card import ROOT
+
+    folders = sorted(p for p in (ROOT / "projects").iterdir() if p.is_dir())
+    assert folders and [p.name for p in folders] == [p.name for p in PROJECTS]
+
+
+def test_readme_compliance_matrix_is_fresh():
+    from shared.doctrine.card import MATRIX_START, ROOT, readme_with_matrix
+
+    readme = (ROOT / "README.md").read_text()
+    assert MATRIX_START in readme
+    assert readme == readme_with_matrix(readme), "run `python -m shared.doctrine render`"

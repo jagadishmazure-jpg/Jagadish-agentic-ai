@@ -357,3 +357,47 @@ def render_card(project_dir: Path) -> str:
         "",
     ]
     return "\n".join(L)
+
+
+# ------------------------------------------------------------------------------ matrix
+MATRIX_START, MATRIX_END = "<!-- doctrine-matrix:start -->", "<!-- doctrine-matrix:end -->"
+
+
+def render_matrix() -> str:
+    """Portfolio-level compliance matrix (top-level README), one row per project card."""
+    rows = [
+        "| Project | Maturity | Systems of record (MCP servers) | Corpus + ACL | Stop conds"
+        " | Five-exit nodes | Chaos | Golden | Task success | Grounded | Policy viol. | KPI"
+        " (target) |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for d in project_dirs():
+        card = load_card(d / "doctrine.yaml")
+        sp = scores_path(d)
+        m = json.loads(sp.read_text())["metrics"] if sp.exists() else {}
+        servers = sorted({c.split(".", 1)[0].strip('"') for c in card.contracts.mcp if "." in c})
+        corpus = (
+            ", ".join(f"{c.name} (ACL)" for c in card.knowledge.corpora)
+            if card.knowledge.corpora
+            else "none (by design)"
+        )
+        golden = d / card.eval.golden
+        kpi = card.kpis[0]
+        rows.append(
+            f"| [{d.name}](projects/{d.name}/DOCTRINE.md) | L{card.maturity.level} | "
+            f"{', '.join(servers) or 'none (retrieval only)'} | {corpus} | "
+            f"{len(card.stop_conditions)} | "
+            f"{len(card.failure_playbook)} | {len(card.chaos)} | "
+            f"{len(load_golden(golden)) if golden.exists() else 0} | "
+            f"{_fmt_metric('task_success', m.get('task_success'))} | "
+            f"{_fmt_metric('groundedness', m.get('groundedness'))} | "
+            f"{_fmt_metric('policy_violation_rate', m.get('policy_violation_rate'))} | "
+            f"{kpi.name} ({kpi.target}) |"
+        )
+    return "\n".join(rows)
+
+
+def readme_with_matrix(readme: str) -> str:
+    head, _, rest = readme.partition(MATRIX_START)
+    _, _, tail = rest.partition(MATRIX_END)
+    return f"{head}{MATRIX_START}\n{render_matrix()}\n{MATRIX_END}{tail}"

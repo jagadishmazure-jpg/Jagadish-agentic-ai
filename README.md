@@ -6,6 +6,12 @@ Each project picks one real business workflow and one graph pattern (routing, hu
 map-reduce, supervisor, and so on). Each one comes with typed state, mock enterprise services,
 tests, and a README covering design trade-offs and interview talking points.
 
+Every project is also held to an **agentic-systems doctrine**: an agent only counts as more
+than a demo when it names its plane dependencies, its systems of record, its retrieval corpus
+and ACL, its tool contracts, its stop conditions, a five-exit failure playbook per node, an
+eval set, an owner and a KPI. Each project carries a machine-checked `doctrine.yaml` and a
+generated `DOCTRINE.md`; CI blocks promotion if any of it is missing or the evals regress.
+
 > **Offline by default.** Every project runs offline against a deterministic mock chat model.
 > This covers tests, CI, and demos. To use a real model, set Azure OpenAI or OpenAI env vars
 > (see [`.env.example`](.env.example)) and the shared factory in [`shared/llm.py`](shared/llm.py)
@@ -26,12 +32,95 @@ tests, and a README covering design trade-offs and interview talking points.
 | 09 | [collections-agent](projects/09-collections-agent) | Overdue-invoice outreach and payment plans | Governance: least-privilege tool identities + HITL interrupt + hash-chained audit | ✅ Built |
 | 10 | [supply-chain-multi-agent](projects/10-supply-chain-multi-agent) | Replenishment: forecast, stock, sourcing, approved PO | Supervisor multi-agent + parallel `Send` + critic loop + HITL | ✅ Built |
 
+## Architecture: four planes and the shared platform
+
+Each agent is a LangGraph graph in the **agent plane**. It reaches knowledge only through the
+shared context builder and systems of record only through MCP servers behind a tool gateway.
+Resilience, tracing, evals and the doctrine gate are shared packages, so every project gets
+the same controls.
+
+```mermaid
+flowchart TB
+    subgraph EXP["Experience plane"]
+        UI["chat / email / approval consoles<br/>(interrupt payloads, citations)"]
+    end
+    subgraph AG["Agent plane - projects/NN-*/"]
+        G["LangGraph graphs<br/>typed state · checkpoints · interrupt() · exits[]"]
+        RES["shared/resilience.py<br/>model fallback chain + breakers · retry/backoff · FiveExitPolicy"]
+        OBS["shared/observability.py<br/>OTel spans (thread/node/tool/tokens/cost/identity) · CostMeter"]
+    end
+    subgraph KN["Knowledge plane"]
+        CTX["shared/context/<br/>chunking (parent/child) · BM25 + vector + RRF + rerank<br/>ACL by principal · as-of validity · sanitizer · token-budget packer<br/>source map · semantic cache"]
+        CORP[("policy / runbook / RFP / playbook corpora")]
+    end
+    subgraph DATA["Data plane - systems of record"]
+        GW["shared/tools/<br/>ToolGateway: allowlist per identity · quotas · timeout<br/>circuit breaker · schema validation · payload sanitising"]
+        MCP["shared/mcp_servers/<br/>FastMCP servers: oms · crm · ticketing · erp · payments<br/>ops · analytics (semantic model) · suppliers"]
+        SOR[("mock OMS / CRM / ERP / ticketing / ledgers")]
+    end
+    subgraph GOV["Assurance (CI)"]
+        EV["shared/evals + python -m evals<br/>golden sets · thresholds"]
+        CH["shared/chaos.py + shared/faults.py<br/>kill model / retrieval / SoR · jailbreak"]
+        DOC["shared/doctrine<br/>doctrine.yaml → DOCTRINE.md · promotion gate"]
+    end
+    UI --> G
+    G --> RES
+    G --> OBS
+    G -->|"retrieve(query, principal, as_of)"| CTX --> CORP
+    G -->|"gateway.call(server.tool)"| GW -->|MCP| MCP --> SOR
+    EV -.-> G
+    CH -.-> G
+    DOC -.-> G
+```
+
+## Doctrine compliance
+
+Generated from each project's `doctrine.yaml` and `evals/scores.json` by
+`python -m shared.doctrine render`. CI fails if this table is stale. Every project has
+plane dependencies, an owner (Jagadish Meduri), KPIs with targets, stop conditions, a
+five-exit row for every graph node, chaos scenarios covering model, retrieval and system-of-
+record outages plus a jailbreak, and a golden eval set. Maturity uses the doctrine's 1-5
+ladder.
+
+<!-- doctrine-matrix:start -->
+| Project | Maturity | Systems of record (MCP servers) | Corpus + ACL | Stop conds | Five-exit nodes | Chaos | Golden | Task success | Grounded | Policy viol. | KPI (target) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| [01-policy-qa-rag](projects/01-policy-qa-rag/DOCTRINE.md) | L4 | none (retrieval only) | hr-it-policies (ACL) | 4 | 8 | 3 | 13 | 1.00 | 1.00 | 0.00 | Deflection of policy questions (>= 40% of HR/IT policy tickets) |
+| [02-ticket-triage](projects/02-ticket-triage/DOCTRINE.md) | L3 | ticketing | none (by design) | 4 | 11 | 3 | 12 | 1.00 | n/a | 0.00 | Auto-route accuracy (>= 90% on golden + weekly sample) |
+| [03-refund-agent](projects/03-refund-agent/DOCTRINE.md) | L5 | crm, oms, payments | refund-policy (ACL) | 4 | 11 | 7 | 12 | 1.00 | 1.00 | 0.00 | Refund containment (>= 60% of refund intents closed without an agent) |
+| [04-sales-meeting-prep](projects/04-sales-meeting-prep/DOCTRINE.md) | L3 | crm, ticketing | none (by design) | 3 | 4 | 4 | 12 | 1.00 | 1.00 | 0.00 | AE prep time (-50% vs baseline (self-reported + calendar gap)) |
+| [05-invoice-po-matching](projects/05-invoice-po-matching/DOCTRINE.md) | L4 | erp | none (by design) | 4 | 6 | 3 | 12 | 1.00 | n/a | 0.00 | Touchless rate (>= 60% of PO-backed invoices) |
+| [06-incident-investigator](projects/06-incident-investigator/DOCTRINE.md) | L4 | ops | sre-runbooks (ACL) | 4 | 3 | 5 | 13 | 1.00 | 1.00 | 0.00 | MTTR (-30% on deploy-correlated incidents) |
+| [07-rfp-response](projects/07-rfp-response/DOCTRINE.md) | L3 | none (retrieval only) | rfp-answer-library (ACL) | 3 | 4 | 3 | 12 | 1.00 | 1.00 | 0.00 | First-draft coverage (>= 70% of questions answered from the library) |
+| [08-contract-review](projects/08-contract-review/DOCTRINE.md) | L3 | none (retrieval only) | legal-playbook (ACL) | 3 | 6 | 3 | 12 | 0.75 | 1.00 | 0.00 | First-pass review time (-60% vs manual) |
+| [09-collections-agent](projects/09-collections-agent/DOCTRINE.md) | L4 | crm, payments | none (by design) | 4 | 11 | 4 | 13 | 1.00 | n/a | 0.00 | Promise-to-pay / plan acceptance (+15% vs manual outreach (holdout)) |
+| [10-supply-chain-multi-agent](projects/10-supply-chain-multi-agent/DOCTRINE.md) | L4 | analytics, erp, suppliers | none (by design) | 4 | 8 | 4 | 17 | 1.00 | n/a | 0.00 | Planner time per replenishment decision (-60% vs manual three-screen process) |
+<!-- doctrine-matrix:end -->
+
+Notes on the numbers:
+
+- The golden sets are written against deterministic mocks, so most projects score 1.00. 08 is
+  deliberately harder: three cases are known misses, and its gate is 0.70.
+- "n/a" groundedness means the project produces decisions rather than cited text.
+- Tool-error rates in some projects are high on purpose, because their golden sets inject
+  system-of-record failures.
+
 ## Repo layout
 
 ```
-shared/            # LLM factory (mock | Azure OpenAI | OpenAI) and shared utilities
-projects/NN-name/  # one folder per project: README, package, tests, run.py
-.github/workflows/ # CI: ruff + pytest (offline)
+shared/
+  llm.py            # LLM factory (mock | Azure OpenAI | OpenAI)
+  context/          # knowledge-plane runtime (hybrid retrieval, ACL, temporal, packer, cache)
+  mcp_servers/      # FastMCP servers wrapping mock systems of record
+  tools/            # MCP client connection, LangChain adapter, ToolGateway
+  resilience.py     # fallback chain, circuit breakers, retry, FiveExitPolicy
+  observability.py  # OpenTelemetry spans + cost meter (console/in-memory; OTLP optional)
+  faults.py, chaos.py
+  evals/            # eval harness (metrics, thresholds)
+  doctrine/         # doctrine card schema, validator (promotion gate), renderer
+evals/              # `python -m evals` runner for all projects
+projects/NN-name/   # README, package, tests, run.py, doctrine.yaml, DOCTRINE.md, evals/
+.github/workflows/  # CI: ruff + pytest + eval gate + doctrine gate (offline)
 ```
 
 ## Setup
@@ -54,8 +143,13 @@ pip install -e ".[openai]" pytest ruff
 
 ```bash
 ruff check . && ruff format --check .
-pytest                     # all projects, offline, mock LLM
+pytest                          # all projects, offline, mock LLM (incl. chaos tests)
+python -m evals                 # golden sets for every project; non-zero exit on regression
+python -m shared.doctrine validate   # promotion gate: cards complete, five-exit coverage, scores
 ```
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` (with the `otlp` extra installed) to ship traces to a
+collector, or `OTEL_CONSOLE=1` to print spans; by default they stay in memory.
 
 ## Run a demo
 
