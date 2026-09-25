@@ -34,6 +34,7 @@ generated `DOCTRINE.md`; CI blocks promotion if any of it is missing or the eval
 | 11 | [customer-care-e2e](projects/11-customer-care-e2e) | "My shipment is late, can I get a refund?" end to end | FastAPI BFF (auth, channel claim, rate limit, SSE) + planner/critic/HITL-with-SLA graph + outbox writes + Docker/ACA | ✅ Built |
 | 12 | [agent-control-plane](projects/12-agent-control-plane) | Governed agent mesh: can we promise this B2B order? | Registry + promotion gate + per-tenant policy + kill switch; A2A (agent card, JSON-RPC tasks, traceparent) fan-out to CRM/SAP/demand agents | ✅ Built |
 | 13 | [insurance-fnol-coverage](projects/13-insurance-fnol-coverage) | FNOL from a scanned packet to an adjuster-approved reserve | OCR confidence gate + edition/jurisdiction temporal RAG ∥ fraud ML tool → HITL within authority; claimant guard | ✅ Built |
+| 14 | [healthcare-prior-auth](projects/14-healthcare-prior-auth) | Prior-auth packets for provider offices; member status | PHI redaction (context + logs) + plan ACL/plan-year RAG ∥ eligibility MCP → coverage-language subgraph (kill switch) → draft → clinician sign-off | ✅ Built |
 
 ## Architecture: four planes and the shared platform
 
@@ -101,6 +102,7 @@ ladder.
 | [11-customer-care-e2e](projects/11-customer-care-e2e/DOCTRINE.md) | L5 | crm, oms, payments | care-policy (ACL), crm-case-history (per request) (ACL) | 5 | 10 | 5 | 21 | 1.00 | 1.00 | 0.00 | Late-delivery refund containment (>= 70% closed without a human) |
 | [12-agent-control-plane](projects/12-agent-control-plane/DOCTRINE.md) | L4 | analytics, crm, erp | none (by design) | 5 | 8 | 4 | 14 | 1.00 | n/a | 0.00 | Unregistered or unauthorised A2A calls served (0) |
 | [13-insurance-fnol-coverage](projects/13-insurance-fnol-coverage/DOCTRINE.md) | L3 | claims, docintel, fraud_ml, policy_admin | policy-forms (ACL) | 5 | 8 | 5 | 22 | 1.00 | 1.00 | 0.00 | FNOL cycle time to adjuster-ready proposal (< 15 minutes for clean packets) |
+| [14-healthcare-prior-auth](projects/14-healthcare-prior-auth/DOCTRINE.md) | L3 | eligibility, pa_portal | medical-policies (ACL) | 5 | 9 | 5 | 20 | 1.00 | 1.00 | 0.00 | Packet preparation time (< 10 minutes from request to clinician-ready draft) |
 <!-- doctrine-matrix:end -->
 
 Notes on the numbers:
@@ -173,6 +175,7 @@ python projects/01-policy-qa-rag/run.py
 python projects/11-customer-care-e2e/run.py
 python projects/12-agent-control-plane/run.py
 python projects/13-insurance-fnol-coverage/run.py
+python projects/14-healthcare-prior-auth/run.py
 ```
 
 ## Using a real LLM (optional)

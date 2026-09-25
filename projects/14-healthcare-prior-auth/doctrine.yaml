@@ -1,0 +1,134 @@
+project: 14-healthcare-prior-auth
+title: Healthcare prior authorization - draft-only packets with clinician sign-off
+owner: Jagadish Meduri
+industry: Healthcare (payer / provider utilization management)
+summary: >-
+  A provider office asks for prior authorization. The clinical note is PHI-redacted before
+  any model or context pack sees it, and a log filter redacts PHI in every log record. Member
+  eligibility comes from the payer API over MCP; a failure means "unknown", never "eligible".
+  Medical policies are retrieved with plan ACL (Gold never sees Silver rules) and plan-year
+  validity as of the date of service. Criteria are checked deterministically. A
+  coverage-language subgraph, behind a runtime kill switch, words the summary with checked
+  citations. The agent can only save a draft; a registered clinician signs before submission.
+  Members get status only, and a hard guardrail blocks medical advice.
+maturity:
+  level: 3
+  rationale: assistive with hard boundaries - research, criteria and packet drafting are automated; submission needs a clinician signature, the member channel is status-only, and coverage wording has a kill switch
+  next_rung: FHIR/Da Vinci PAS integration (CRD/DTR) for real payer rules and electronic submission, keeping clinician sign-off and the member-channel guardrail
+kpis:
+  - {name: Packet preparation time, target: "< 10 minutes from request to clinician-ready draft", measure: "request -> interrupt timestamps"}
+  - {name: First-pass approval rate, target: "up vs baseline (fewer pends for missing documentation)", measure: "payer determinations on submitted packets"}
+  - {name: PHI in logs or model context, target: "0 occurrences", measure: "log scan + context pack scan for names, MRN, DOB, SSN, phone"}
+  - {name: Medical advice in member channel, target: "0 messages", measure: "guardrail hits + sampled QA of member replies"}
+roi: >-
+  Prior authorization is a large administrative load on provider staff and a common cause of
+  care delays and pended requests for missing documentation. Assembling a criteria-checked,
+  cited packet cuts staff preparation time and raises first-pass approvals because gaps show
+  up before submission. The clinician still signs every request and members never get
+  clinical advice from the bot, so the gain comes without shifting clinical risk. Costs are
+  model usage, payer API access and medical-policy content upkeep.
+planes:
+  experience: provider portal (request + clinician sign-off console) and member app/chat (status only, medical-advice guardrail)
+  agent: LangGraph PA graph (intake -> [eligibility || policy] -> criteria -> coverage_language subgraph -> draft_packet -> clinician_approval -> submit | member_reply), checkpoints + interrupt(), kill switch on the coverage-language subgraph
+  knowledge: medical-policies corpus on the shared ContextBuilder - plan ACL groups, plan-year validity as-of date of service, UM guidance ACL'd to medical directors; clinical note PHI-redacted before packing
+  data: payer eligibility API and PA portal via MCP servers; three identities (reader, drafter, submitter); portal enforces clinician signature server-side
+systems_of_record:
+  - {name: Eligibility API, kind: api, contract: "eligibility.check_eligibility(member_id, dos) -> eligible, plan, plan_year (MCP-wrapped 270/271)", access: read}
+  - {name: PA portal, kind: mcp, contract: "pa_portal.save_draft (write), pa_portal.submit (write; clinician signature required), pa_portal.get_status (read)", access: read_write}
+knowledge:
+  corpora:
+    - name: medical-policies
+      owner: Jagadish Meduri (medical policy)
+      acl: "common policies all plans; plan-specific policies plan:<id> only; UM-MD-GUIDE-INT um-medical-director only"
+      temporal: "plan-year editions (2025, 2026) with valid_from/valid_to; retrieved as-of the date of service"
+      refresh_sla: plan-year publish plus mid-year bulletins within 24 hours
+      sensitivity: internal
+  notes: "Clinical notes are per-request evidence: PHI-redacted (names, MRN, DOB, SSN, phone, email) before packing and never indexed."
+contracts:
+  mcp:
+    - "eligibility.check_eligibility(member_id, dos)"
+    - "pa_portal.save_draft(packet, idempotency_key, dry_run)"
+    - "pa_portal.submit(draft_id, signed_by, idempotency_key, dry_run)"
+    - "pa_portal.get_status(member_id)"
+  a2a: []
+  notes: Peer-to-peer review scheduling with the payer's UM agent would be the first A2A peer.
+identities:
+  - {identity: mi-pa-reader, allow: [eligibility.check_eligibility, pa_portal.get_status]}
+  - {identity: mi-pa-drafter, allow: [pa_portal.save_draft]}
+  - {identity: mi-pa-submitter, allow: [pa_portal.submit]}
+stop_conditions:
+  - the agent only drafts; submission requires a registered clinician's sign-off, enforced in the graph and again by the portal
+  - eligibility failure -> "unknown" flagged on the packet; ineligible on the date of service -> no packet
+  - member channel is status-only; medical-advice questions are refused with the nurse line; advice in any model output is blocked
+  - coverage-language kill switch off -> packet has the criteria checklist and citations but no generated wording
+  - PHI never reaches logs or model context (redaction + log filter)
+graph: prior_auth.graph:build_graph
+failure_playbook:
+  - node: intake
+    success: note redacted, facts extracted deterministically, channel routed
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: instruction-like text in the note -> removed and flagged for the clinician
+  - node: eligibility
+    success: eligible / ineligible on DOS with matching plan
+    retry: gateway backoff
+    compensate: n/a (read-only)
+    degrade: API down or error -> status unknown, packet flagged "verify before service"
+    escalate: plan on card differs from payer plan -> unknown + escalation record
+  - node: policy
+    success: plan- and plan-year-scoped policies retrieved with citations
+    retry: n/a (idempotent search)
+    compensate: n/a
+    degrade: retrieval down -> no policies, criteria unknown
+    escalate: n/a
+  - node: criteria
+    success: deterministic met/unmet list from retrieved policies
+    retry: n/a
+    compensate: n/a
+    degrade: required policy not retrieved -> criteria unknown
+    escalate: member ineligible on DOS -> no packet, provider told to verify coverage
+  - node: coverage_language
+    success: model wording that cites only retrieved policies and contains no PHI
+    retry: fallback deployment
+    compensate: n/a
+    degrade: kill switch -> no wording; model down or bad citation/PHI -> template
+    escalate: n/a
+  - node: draft_packet
+    success: draft saved in the PA portal (idempotent per thread)
+    retry: gateway backoff
+    compensate: "draft deletable by staff; nothing submitted"
+    degrade: portal down -> packet kept in state, nothing saved or submitted
+    escalate: n/a
+  - node: clinician_approval
+    success: registered clinician approves or rejects
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: non-clinician sign-off refused
+  - node: submit
+    success: portal accepts the clinician-signed submission
+    retry: "gateway backoff; idempotency key submit:<draft>"
+    compensate: withdraw request via portal (staff)
+    degrade: portal down -> signed draft stays, retried later
+    escalate: n/a
+  - node: member_reply
+    success: status of the member's requests, no clinical content
+    retry: fallback deployment
+    compensate: n/a
+    degrade: model down -> template; advice in output -> blocked + nurse line
+    escalate: medical-advice question -> refusal + nurse line
+chaos:
+  - {fault: model, node: coverage_language, exit: degrade, invariant: "template criteria wording; packet still clinician-signed and submitted"}
+  - {fault: retrieval, node: policy, exit: degrade, invariant: "criteria unknown, no citations claimed"}
+  - {fault: "sor:eligibility", node: eligibility, exit: degrade, invariant: "eligibility unknown flagged on the packet, never assumed eligible"}
+  - {fault: "sor:pa_portal", node: draft_packet, exit: degrade, invariant: "nothing saved, nothing submitted"}
+  - {fault: jailbreak, node: intake, exit: escalate, invariant: "injected note text removed from the packet and flagged for the clinician"}
+eval:
+  golden: evals/golden.jsonl
+  suite: prior_auth.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.95"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.002"
