@@ -1,6 +1,6 @@
 # Agentic AI Portfolio
 
-Ten production-style business agents built with **LangGraph** and **LangChain**, put together
+Eighteen production-style business agents built with **LangGraph** and **LangChain**, put together
 by Jagadish Meduri over a 12-week prep for Staff-level agentic AI engineering interviews.
 Each project picks one real business workflow and one graph pattern (routing, human-in-the-loop,
 map-reduce, supervisor, and so on). Each one comes with typed state, mock enterprise services,
