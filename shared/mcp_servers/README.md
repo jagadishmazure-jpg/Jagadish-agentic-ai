@@ -21,7 +21,7 @@ real client for the same contract. Tool surfaces are deliberately small and busi
   or creates a record twice.
 - **Typed error envelopes** let the client-side gateway re-raise business errors as the same
   exception types (for example "PO not found") and treat outages as retryable.
-- Industry projects (13-18) define their own `SorServer`s in their `sor.py`; they use the same
+- Industry projects (13-19) define their own `SorServer`s in their `sor.py`; they use the same
   kit and connect through `shared.tools.harness.connect_servers`.
 
 ## Try it

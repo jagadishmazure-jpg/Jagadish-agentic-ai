@@ -1,6 +1,6 @@
 # `shared/`: platform code used by every project
 
-The shared platform that all eighteen projects build on. Graphs in `projects/` stay focused
+The shared platform that all twenty projects build on. Graphs in `projects/` stay focused
 on business logic; the cross-cutting controls live here so every agent gets them the same
 way: the LLM factory and fallback chain, resilience primitives and the five-exit policy,
 OpenTelemetry tracing and cost metering, fault injection for chaos tests, the knowledge-plane

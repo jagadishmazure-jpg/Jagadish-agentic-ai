@@ -1,6 +1,6 @@
 # Agentic AI Portfolio
 
-Eighteen production-style business agents built with **LangGraph** and **LangChain**, put together
+Twenty production-style business agents built with **LangGraph** and **LangChain**, put together
 by Jagadish Meduri over a 12-week prep for Staff-level agentic AI engineering interviews.
 Each project picks one real business workflow and one graph pattern (routing, human-in-the-loop,
 map-reduce, supervisor, and so on). Each one comes with typed state, mock enterprise services,
@@ -39,6 +39,8 @@ generated `DOCTRINE.md`; CI blocks promotion if any of it is missing or the eval
 | 16 | [telecom-outage-care](projects/16-telecom-outage-care) | Outage-aware care, bill explain, dispatch; NOC summaries | OSS truth + freshness ∥ account → topology blast radius → cited bill explain / dispatch context pack / offers (blocked in outage); read-only NOC branch | ✅ Built |
 | 17 | [automotive-technician-copilot](projects/17-automotive-technician-copilot) | Service-bay TSB, wiring and parts copilot; warranty claims | VIN (MCP) → TSB as-of repair date ∥ caption-indexed diagrams → wrong-version safety check → parts ATP → warranty coverage → admin HITL → idempotent claim | ✅ Built |
 | 18 | [logistics-exception-agent](projects/18-logistics-exception-agent) | Event-driven shipment exceptions: tracking, proactive notices, carrier claims | milestone stream consumer (checkpoints, dedupe) → TMS-grounded track (no interpolation) / [evidence ∥ A2A capacity what-if] → confidence-gated notice / OCR → claim window by rule edition | ✅ Built |
+| 19 | [finetune-vs-prompting](projects/19-finetune-vs-prompting) | Should we fine-tune? Mortgage document-type classification, prompted base model vs fine-tuned model | dataset builder (PII scrub, dedup, grouped split, leakage check, chat JSONL) → offline fine-tune → shared eval harness comparison → promotion gate + registry + rollback; serving graph intake → classify (champion, prompted fallback) → file / review; optional Azure OpenAI fine-tuning script (dry run) | ✅ Built |
+| 20 | [long-term-memory-agent](projects/20-long-term-memory-agent) | Banking assistant that remembers a customer across sessions and forgets on request | checkpointer (thread) + LangGraph Store (semantic / episodic / procedural, per-user namespaces): intake → recall (relevance × recency × confidence, TTL) → respond (citation guard) → remember (write policy: consent, poisoning, redaction, conflicts) / forget / consent | ✅ Built |
 
 ## Architecture: four planes and the shared platform
 
@@ -111,6 +113,8 @@ ladder.
 | [16-telecom-outage-care](projects/16-telecom-outage-care/DOCTRINE.md) | L4 | billing, diagnostics, field, offers, oss | tariffs (ACL) | 5 | 9 | 4 | 19 | 1.00 | 1.00 | 0.00 | Avoidable truck rolls (0 dispatches while a confirmed or unverifiable outage covers the path) |
 | [17-automotive-technician-copilot](projects/17-automotive-technician-copilot/DOCTRINE.md) | L3 | parts, vehicle, warranty | tsb (ACL), wiring-diagrams (ACL) | 5 | 8 | 5 | 17 | 1.00 | 1.00 | 0.00 | Wrong-version guidance (0 superseded torque specs or part numbers shown) |
 | [18-logistics-exception-agent](projects/18-logistics-exception-agent/DOCTRINE.md) | L3 | claims, comms, tms | claim-rules (ACL), comms-policy (ACL) | 6 | 8 | 5 | 21 | 1.00 | 1.00 | 0.00 | Proactive notice coverage (>= 90% of confirmed slips notified before the customer asks) |
+| [19-finetune-vs-prompting](projects/19-finetune-vs-prompting/DOCTRINE.md) | L3 | los | none (by design) | 5 | 4 | 4 | 14 | 1.00 | n/a | 0.00 | Auto-file precision (>= 98% of auto-filed documents keep their type after processor QC) |
+| [20-long-term-memory-agent](projects/20-long-term-memory-agent/DOCTRINE.md) | L3 | none (retrieval only) | customer-memory (ACL) | 6 | 6 | 3 | 18 | 1.00 | 1.00 | 0.00 | Correct recall (>= 95% of remembered facts recalled correctly in later sessions) |
 <!-- doctrine-matrix:end -->
 
 Notes on the numbers:
@@ -200,6 +204,8 @@ python projects/15-banking-credit-memo/run.py
 python projects/16-telecom-outage-care/run.py
 python projects/17-automotive-technician-copilot/run.py
 python projects/18-logistics-exception-agent/run.py
+python projects/19-finetune-vs-prompting/run.py
+python projects/20-long-term-memory-agent/run.py
 ```
 
 ## Using a real LLM (optional)
