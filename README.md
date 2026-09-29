@@ -1,5 +1,17 @@
 # Agentic AI Portfolio
 
+## At a glance (for recruiters)
+
+- **21 working AI agents for real business workflows** across banking, healthcare, insurance, mortgage, retail, telecom, logistics and automotive: insurance claims intake (FNOL), healthcare prior authorization, commercial credit memos, customer refunds with approval, supply-chain replenishment, contract review and more.
+- **Eight multi-agent orchestration patterns compared side by side** on the same mortgage underwriting task, measured on answer quality, cost (LLM calls and tokens) and behaviour under injected failures.
+- **Built-in safety and governance:** human approval before risky actions, prompt-injection guardrails, access-controlled retrieval (RAG), and long-term customer memory that can forget on request (right to be forgotten).
+- **Quality is measured, not assumed:** eval gates in CI block a release if scores regress, and a fine-tuning study on synthetic mortgage document classification lifts test accuracy from 0.64 to 0.97 while using about 90% fewer input tokens per call (run offline).
+- **495 automated tests** run on every push in GitHub Actions, alongside lint and eval gates.
+
+**Skills demonstrated:** Python, LangGraph, LangChain, RAG, MCP, A2A, LLM evaluation, fine-tuning, OpenTelemetry, FastAPI, CI/CD (GitHub Actions).
+
+*Honesty note: everything runs offline against a deterministic mock model and mock enterprise services; it has not been deployed to live Azure yet (see "Offline by default" below).*
+
 Twenty-one production-style business agents built with **LangGraph** and **LangChain**, put together
 by Jagadish Meduri over a 12-week prep for Staff-level agentic AI engineering interviews.
 Each project picks one real business workflow and one graph pattern (routing, human-in-the-loop,
