@@ -1,4 +1,4 @@
-"""Care graph for 'My shipment is late, can I get a refund?'
+"""Care graph for a customer asking for a refund on a late delivery.
 
 classify (confidence gate + fraud pre-route) -> plan (lanes + tool budget) -> order (OMS/CRM
 via MCP) -> [policy (RAG as-of purchase date) || history (CRM cases, ACL-trimmed)] -> refund

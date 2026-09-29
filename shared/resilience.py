@@ -1,8 +1,9 @@
 """Resilience primitives: retry with backoff, circuit breaker, model fallback chain, and the
 declarative five-exit failure policy every graph node must document.
 
-Doctrine rule: every node has five exits - success, retry (with backoff), compensate a
-partial side effect, degrade to a limited but *true* answer, escalate. The fallback chain
+Doctrine rule: each node declares how it leaves on every outcome. It either succeeds, retries
+with backoff, compensates (undoes) any side effect it half-applied, degrades to a narrower answer
+that is still correct, or escalates to a human. The fallback chain
 never fabricates business state: when every deployment is down it raises
 ``ModelUnavailableError`` and the calling node takes its degrade exit.
 """

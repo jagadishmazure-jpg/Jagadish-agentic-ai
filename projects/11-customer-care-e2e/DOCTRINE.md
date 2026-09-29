@@ -1,4 +1,4 @@
-# Doctrine card: End-to-end customer care - "My shipment is late, can I get a refund?"
+# Doctrine card: End-to-end customer care - refund requests for late deliveries
 
 <!-- GENERATED from doctrine.yaml + evals/scores.json by `python -m shared.doctrine render`. Do not edit by hand. -->
 

@@ -7,7 +7,7 @@ from care_e2e.graph import build_graph, sweep_expired
 from care_e2e.worker import drain
 from shared import faults
 
-LATE = "My shipment {} is late, can I get a refund?"
+LATE = "Order {} arrived late. Am I eligible for a refund?"
 
 
 def test_happy_path_runs_all_lanes_and_pays_once(graph, ask, systems):

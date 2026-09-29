@@ -1,4 +1,4 @@
-# 11 · End-to-End Customer Care: "My shipment is late, can I get a refund?"
+# 11 · End-to-End Customer Care: late-delivery refund requests
 
 > **Status:** ✅ Built. `pytest projects/11-customer-care-e2e` runs 25 offline tests, `python run.py` runs the demo, and `docker compose` runs the BFF with three MCP server containers.
 
