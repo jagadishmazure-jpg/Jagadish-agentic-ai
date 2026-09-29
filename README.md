@@ -1,9 +1,9 @@
 # Agentic AI Portfolio
 
-Twenty production-style business agents built with **LangGraph** and **LangChain**, put together
+Twenty-one production-style business agents built with **LangGraph** and **LangChain**, put together
 by Jagadish Meduri over a 12-week prep for Staff-level agentic AI engineering interviews.
 Each project picks one real business workflow and one graph pattern (routing, human-in-the-loop,
-map-reduce, supervisor, and so on). Each one comes with typed state, mock enterprise services,
+map-reduce, supervisor, and so on); project 21 puts eight multi-agent orchestration patterns side by side on one task and measures them. Each one comes with typed state, mock enterprise services,
 tests, and a README covering design trade-offs and interview talking points.
 
 Every project is also held to an **agentic-systems doctrine**: an agent only counts as more
@@ -41,6 +41,7 @@ generated `DOCTRINE.md`; CI blocks promotion if any of it is missing or the eval
 | 18 | [logistics-exception-agent](projects/18-logistics-exception-agent) | Event-driven shipment exceptions: tracking, proactive notices, carrier claims | milestone stream consumer (checkpoints, dedupe) → TMS-grounded track (no interpolation) / [evidence ∥ A2A capacity what-if] → confidence-gated notice / OCR → claim window by rule edition | ✅ Built |
 | 19 | [finetune-vs-prompting](projects/19-finetune-vs-prompting) | Should we fine-tune? Mortgage document-type classification, prompted base model vs fine-tuned model | dataset builder (PII scrub, dedup, grouped split, leakage check, chat JSONL) → offline fine-tune → shared eval harness comparison → promotion gate + registry + rollback; serving graph intake → classify (champion, prompted fallback) → file / review; optional Azure OpenAI fine-tuning script (dry run) | ✅ Built |
 | 20 | [long-term-memory-agent](projects/20-long-term-memory-agent) | Banking assistant that remembers a customer across sessions and forgets on request | checkpointer (thread) + LangGraph Store (semantic / episodic / procedural, per-user namespaces): intake → recall (relevance × recency × confidence, TTL) → respond (citation guard) → remember (write policy: consent, poisoning, redaction, conflicts) / forget / consent | ✅ Built |
+| 21 | [multi-agent-orchestration-patterns](projects/21-multi-agent-orchestration-patterns) | Mortgage underwriting exception (research, ratios, as-of policy, cited memo) solved eight ways and compared | sequential · concurrent fan-out/fan-in · supervisor · hierarchical subgraph teams · swarm (`Command(goto)`) · moderated group chat/debate · magentic task/progress ledgers with replanning · blackboard; common harness (budgets, ping-pong/stall detection, route validation, OTel per agent, HITL) + comparison runner (quality, LLM calls, tokens, simulated latency, fault behaviour) whose README table is test-enforced | ✅ Built |
 
 ## Architecture: four planes and the shared platform
 
@@ -115,6 +116,7 @@ ladder.
 | [18-logistics-exception-agent](projects/18-logistics-exception-agent/DOCTRINE.md) | L3 | claims, comms, tms | claim-rules (ACL), comms-policy (ACL) | 6 | 8 | 5 | 21 | 1.00 | 1.00 | 0.00 | Proactive notice coverage (>= 90% of confirmed slips notified before the customer asks) |
 | [19-finetune-vs-prompting](projects/19-finetune-vs-prompting/DOCTRINE.md) | L3 | los | none (by design) | 5 | 4 | 4 | 14 | 1.00 | n/a | 0.00 | Auto-file precision (>= 98% of auto-filed documents keep their type after processor QC) |
 | [20-long-term-memory-agent](projects/20-long-term-memory-agent/DOCTRINE.md) | L3 | none (retrieval only) | customer-memory (ACL) | 6 | 6 | 3 | 18 | 1.00 | 1.00 | 0.00 | Correct recall (>= 95% of remembered facts recalled correctly in later sessions) |
+| [21-multi-agent-orchestration-patterns](projects/21-multi-agent-orchestration-patterns/DOCTRINE.md) | L3 | credit_bureau, loan_system | credit-policy (ACL) | 5 | 11 | 4 | 24 | 1.00 | 1.00 | 0.00 | Exception memos accepted without rework (>= 90% of completed memos) |
 <!-- doctrine-matrix:end -->
 
 Notes on the numbers:
@@ -206,6 +208,7 @@ python projects/17-automotive-technician-copilot/run.py
 python projects/18-logistics-exception-agent/run.py
 python projects/19-finetune-vs-prompting/run.py
 python projects/20-long-term-memory-agent/run.py
+python projects/21-multi-agent-orchestration-patterns/run.py            # add --compare for the pattern comparison
 ```
 
 ## Using a real LLM (optional)
