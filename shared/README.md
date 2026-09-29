@@ -16,6 +16,7 @@ doctrine promotion gate.
 | [`observability.py`](observability.py) | OpenTelemetry tracing and cost metering. `install()` registers one LangChain callback handler process-wide so graph, node, LLM and tool spans carry thread id, identity, token counts and estimated cost; `CostMeter`, `ToolStats`, `run_config()` for standard invoke config. Exports to memory by default, console with `OTEL_CONSOLE=1`, OTLP when configured. |
 | [`resilience.py`](resilience.py) | Resilience primitives: `retry_call` with `Backoff`, `CircuitBreaker`, `FallbackChatModel` / `with_fallback` (raises `ModelUnavailableError` rather than inventing output), `FiveExitPolicy`, `exit_table` and `exit_record` for the success / retry / compensate / degrade / escalate exits every node documents. |
 | [`a2a/`](a2a/README.md) | Agent-to-agent task contract: agent cards, JSON-RPC server and client with traceparent and tenant propagation. |
+| [`api/`](api/README.md) | FastAPI service that lists projects, returns checked-in scores and reruns a project's golden set (mock model only); the container image and Azure deployment run it. |
 | [`context/`](context/README.md) | Knowledge-plane runtime: chunking, hybrid retrieval, ACL and as-of filtering, sanitising, budgeted packing, citations, cache. |
 | [`doctrine/`](doctrine/README.md) | Doctrine card schema, promotion-gate validator and `DOCTRINE.md` / matrix renderer. |
 | [`evals/`](evals/README.md) | Offline eval harness: golden JSONL to metrics to thresholds. |

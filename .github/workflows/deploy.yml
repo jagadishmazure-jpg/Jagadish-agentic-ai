@@ -1,0 +1,159 @@
+# Deploy: build images -> dev -> (approval) -> prod, with either Bicep or Terraform.
+#
+# GATED OFF: every job except `preflight` runs only when the repository variable
+# DEPLOY_ENABLED == 'true'. It is not set, so on push to main this workflow reports the gate
+# and skips the deploy jobs. See docs/deployment.md for the one-time setup (OIDC federated
+# credentials, GitHub Environments `dev` and `prod` with required reviewers, state storage).
+#
+# Azure login is OIDC only (azure/login with a federated credential): no client secret exists.
+name: deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_tool:
+        description: "IaC tool"
+        type: choice
+        options: [terraform, bicep]
+        default: terraform
+      promote_to_prod:
+        description: "Continue to prod after dev (prod still waits for reviewer approval)"
+        type: boolean
+        default: true
+      location:
+        description: "Azure region"
+        type: string
+        default: eastus2
+permissions:
+  contents: read
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  DEPLOY_TOOL: ${{ inputs.deploy_tool || vars.DEPLOY_TOOL || 'terraform' }}
+  LOCATION: ${{ inputs.location || vars.AZURE_LOCATION || 'eastus2' }}
+  IMAGE_TAG: ${{ github.sha }}
+  TF_VERSION: "1.16.4"
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report deploy gate
+        env:
+          ENABLED: ${{ vars.DEPLOY_ENABLED == 'true' }}
+        run: |
+          {
+            echo "### Deploy gate"
+            echo "- DEPLOY_ENABLED: \`${ENABLED}\` (deploy jobs run only when this is true)"
+            echo "- deploy tool: \`${DEPLOY_TOOL}\`, region: \`${LOCATION}\`, image tag: \`${IMAGE_TAG}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [[ "$ENABLED" == "true" ]] || echo "::notice::Deployment disabled (repository variable DEPLOY_ENABLED is not 'true'); build and deploy jobs are skipped."
+
+  build:
+    needs: preflight
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the portfolio API image
+        run: |
+          mkdir -p images
+          docker build -t agentic-portfolio:$IMAGE_TAG .
+          docker save agentic-portfolio:$IMAGE_TAG -o images/agentic-portfolio.tar
+      - name: Local smoke (/healthz)
+        run: |
+          docker run -d --name api -p 8080:8080 agentic-portfolio:$IMAGE_TAG
+          for i in $(seq 1 30); do curl -fsS localhost:8080/healthz && exit 0; sleep 2; done
+          docker logs api; exit 1
+      - uses: actions/upload-artifact@v4
+        with: { name: images, path: images, retention-days: 3 }
+
+  deploy-dev:
+    needs: build
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET_ENV: dev
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TFSTATE_RESOURCE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+      TFSTATE_STORAGE_ACCOUNT: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
+    outputs:
+      acr_name: ${{ steps.provision.outputs.acr_name }}
+      app_url: ${{ steps.provision.outputs.app_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "${{ env.TF_VERSION }}", terraform_wrapper: false }
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Provision (${{ env.DEPLOY_TOOL }})
+        id: provision
+        run: .github/scripts/deploy.sh provision
+      - uses: actions/download-artifact@v4
+        with: { name: images, path: images }
+      - name: Push image to ACR
+        env: { ACR_NAME: "${{ steps.provision.outputs.acr_name }}" }
+        run: .github/scripts/deploy.sh push
+      - name: Roll the API Container App
+        env:
+          ACR_NAME: ${{ steps.provision.outputs.acr_name }}
+          RESOURCE_GROUP: ${{ steps.provision.outputs.resource_group }}
+          APP_NAME: ${{ steps.provision.outputs.app_name }}
+        run: .github/scripts/deploy.sh roll
+      - name: Smoke tests
+        env: { APP_URL: "${{ steps.provision.outputs.app_url }}" }
+        run: .github/scripts/deploy.sh smoke
+
+  deploy-prod:
+    needs: deploy-dev
+    if: vars.DEPLOY_ENABLED == 'true' && (github.event_name == 'push' || inputs.promote_to_prod)
+    runs-on: ubuntu-latest
+    environment: prod # required reviewers are configured on this environment
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET_ENV: prod
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TFSTATE_RESOURCE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+      TFSTATE_STORAGE_ACCOUNT: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "${{ env.TF_VERSION }}", terraform_wrapper: false }
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Provision (${{ env.DEPLOY_TOOL }})
+        id: provision
+        run: .github/scripts/deploy.sh provision
+      - name: Promote images from dev ACR (same image, no rebuild)
+        env:
+          ACR_NAME: ${{ steps.provision.outputs.acr_name }}
+          SOURCE_ACR: ${{ needs.deploy-dev.outputs.acr_name }}
+        run: .github/scripts/deploy.sh import
+      - name: Roll the API Container App
+        env:
+          ACR_NAME: ${{ steps.provision.outputs.acr_name }}
+          RESOURCE_GROUP: ${{ steps.provision.outputs.resource_group }}
+          APP_NAME: ${{ steps.provision.outputs.app_name }}
+        run: .github/scripts/deploy.sh roll
+      - name: Smoke tests
+        env: { APP_URL: "${{ steps.provision.outputs.app_url }}" }
+        run: .github/scripts/deploy.sh smoke

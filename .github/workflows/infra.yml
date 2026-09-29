@@ -1,0 +1,145 @@
+# Infrastructure CI: runs on every pull request and on main. Nothing here touches Azure unless
+# OIDC variables exist, and even then it only plans.
+#   terraform fmt / init -backend=false / validate / test (mocked providers)
+#   tflint (skipped with a warning if it cannot be installed)
+#   checkov security scan (config: .checkov.yaml; unlisted findings fail the job)
+#   bicep build of the Bicep twin (infra/bicep)
+#   container image build + a local /healthz smoke run
+#   terraform plan: only when AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID are set
+name: infra
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  TF_VERSION: "1.16.4"
+  TF_IN_AUTOMATION: "1"
+  STACK: infra/terraform
+jobs:
+  bicep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bicep CLI (pinned)
+        run: |
+          curl -sSLo bicep https://github.com/Azure/bicep/releases/download/v0.47.16/bicep-linux-x64
+          chmod +x bicep && sudo mv bicep /usr/local/bin/bicep && bicep --version
+      - name: bicep build (warnings fail)
+        run: |
+          bicep build infra/bicep/main.bicep --stdout > /dev/null 2> bicep.log || { cat bicep.log; exit 1; }
+          cat bicep.log; if grep -q "Warning" bicep.log; then exit 1; fi
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "${{ env.TF_VERSION }}", terraform_wrapper: false }
+      - name: terraform fmt
+        run: terraform -chdir="$STACK" fmt -check -recursive -diff
+      - name: terraform init (no backend)
+        run: terraform -chdir="$STACK" init -backend=false -input=false
+      - name: terraform validate
+        run: terraform -chdir="$STACK" validate
+      - name: terraform test (offline plan with mocked providers)
+        run: terraform -chdir="$STACK" test
+
+  tflint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: terraform-linters/setup-tflint@v4
+        id: setup
+        continue-on-error: true
+        with: { tflint_version: v0.64.0, github_token: "${{ github.token }}" }
+      - name: tflint
+        if: steps.setup.outcome == 'success'
+        working-directory: ${{ env.STACK }}
+        env: { GITHUB_TOKEN: "${{ github.token }}" }
+        run: tflint --init && tflint --recursive --format compact
+      - name: tflint unavailable
+        if: steps.setup.outcome != 'success'
+        run: echo "::warning::tflint could not be installed; lint skipped (validate still enforced)"
+
+  checkov:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install --quiet checkov==3.3.20
+      - name: checkov (Terraform)
+        run: checkov -d "$STACK" --config-file .checkov.yaml
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build (portfolio API)
+        run: docker build -t agentic-portfolio:ci .
+      - name: smoke run (/healthz, /readyz, /projects)
+        run: |
+          docker run -d --name api -p 8080:8080 agentic-portfolio:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8080/healthz && break; sleep 2; done
+          curl -fsS localhost:8080/readyz && curl -fsS localhost:8080/projects | jq length || { docker logs api; exit 1; }
+
+  plan:
+    needs: terraform
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - name: Azure credentials present?
+        id: creds
+        run: |
+          if [[ -n "$ARM_CLIENT_ID" && -n "$ARM_TENANT_ID" && -n "$ARM_SUBSCRIPTION_ID" ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::terraform plan skipped: no Azure OIDC variables configured (fmt/validate/test/tflint/checkov still enforced)"
+            echo "### terraform plan skipped (no Azure credentials configured)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.creds.outputs.present == 'true'
+      - uses: hashicorp/setup-terraform@v3
+        if: steps.creds.outputs.present == 'true'
+        with: { terraform_version: "${{ env.TF_VERSION }}", terraform_wrapper: false }
+      - uses: azure/login@v2
+        if: steps.creds.outputs.present == 'true'
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: terraform init (remote state if configured, else local)
+        if: steps.creds.outputs.present == 'true'
+        env:
+          TFSTATE_RESOURCE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+          TFSTATE_STORAGE_ACCOUNT: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
+        run: |
+          if [[ -n "$TFSTATE_RESOURCE_GROUP" && -n "$TFSTATE_STORAGE_ACCOUNT" ]]; then
+            terraform -chdir="$STACK" init -input=false -backend-config=envs/dev.backend.hcl \
+              -backend-config="resource_group_name=$TFSTATE_RESOURCE_GROUP" \
+              -backend-config="storage_account_name=$TFSTATE_STORAGE_ACCOUNT" \
+              -backend-config="container_name=${{ vars.TFSTATE_CONTAINER || 'tfstate' }}"
+          else
+            printf 'terraform {\n  backend "local" {}\n}\n' > "$STACK/backend_override.tf"
+            terraform -chdir="$STACK" init -input=false
+          fi
+      - name: terraform plan (dev)
+        if: steps.creds.outputs.present == 'true'
+        run: |
+          terraform -chdir="$STACK" plan -input=false -lock=false -var-file=envs/dev.tfvars -no-color -out=tfplan | tee plan.txt
+          { echo '### terraform plan (dev)'; echo '```'; tail -n 40 plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

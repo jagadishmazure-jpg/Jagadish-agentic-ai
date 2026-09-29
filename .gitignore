@@ -21,3 +21,12 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+backend_override.tf

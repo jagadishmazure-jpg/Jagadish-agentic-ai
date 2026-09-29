@@ -6,9 +6,10 @@
 - **Eight multi-agent orchestration patterns compared side by side** on the same mortgage underwriting task, measured on answer quality, cost (LLM calls and tokens) and behaviour under injected failures.
 - **Built-in safety and governance:** human approval before risky actions, prompt-injection guardrails, access-controlled retrieval (RAG), and long-term customer memory that can forget on request (right to be forgotten).
 - **Quality is measured, not assumed:** eval gates in CI block a release if scores regress, and a fine-tuning study on synthetic mortgage document classification lifts test accuracy from 0.64 to 0.97 while using about 90% fewer input tokens per call (run offline).
-- **495 automated tests** run on every push in GitHub Actions, alongside lint and eval gates.
+- **500 automated tests** run on every push in GitHub Actions, alongside lint and eval gates.
+- **Deployable as a small service:** a FastAPI catalog/eval API ([`shared/api`](shared/api/README.md)) in one container image, with Terraform and Bicep for Azure Container Apps ([`infra/`](infra/README.md)) and a GitHub Actions pipeline with OIDC login and dev -> prod approval gates. The pipeline is switched off until a subscription exists ([docs/deployment.md](docs/deployment.md)).
 
-**Skills demonstrated:** Python, LangGraph, LangChain, RAG, MCP, A2A, LLM evaluation, fine-tuning, OpenTelemetry, FastAPI, CI/CD (GitHub Actions).
+**Skills demonstrated:** Python, LangGraph, LangChain, RAG, MCP, A2A, LLM evaluation, fine-tuning, OpenTelemetry, FastAPI, Docker, Terraform, Bicep, Azure Container Apps, CI/CD (GitHub Actions, OIDC).
 
 *Honesty note: everything runs offline against a deterministic mock model and mock enterprise services; it has not been deployed to live Azure yet (see "Offline by default" below).*
 
@@ -148,6 +149,7 @@ shared/
   mcp_servers/      # FastMCP servers wrapping mock systems of record
   tools/            # MCP client connection, LangChain adapter, ToolGateway
   a2a/              # A2A-style agent cards, JSON-RPC server + client (projects 12, 18)
+  api/              # FastAPI catalog + eval API (what the container runs)
   resilience.py     # fallback chain, circuit breakers, retry, FiveExitPolicy
   observability.py  # OpenTelemetry spans + cost meter (console/in-memory; OTLP optional)
   faults.py, chaos.py
@@ -155,7 +157,10 @@ shared/
   doctrine/         # doctrine card schema, validator (promotion gate), renderer
 evals/              # `python -m evals` runner for all projects
 projects/NN-name/   # README, package, tests, run.py, doctrine.yaml, DOCTRINE.md, evals/
-.github/workflows/  # CI: ruff + pytest + eval gate + doctrine gate (offline)
+.github/workflows/  # CI: ruff + pytest + eval gate + doctrine gate (offline); infra checks; gated deploy
+infra/              # Terraform (primary) and Bicep for Azure Container Apps
+docs/               # deployment.md: pipeline, OIDC setup, approval gates
+Dockerfile          # API image (uv, non-root)
 ```
 
 ### Folder READMEs
@@ -167,6 +172,7 @@ Every folder has its own README with a file-by-file table. Good starting points:
 | [`shared/`](shared/README.md) | The platform every project uses; links to [`context/`](shared/context/README.md), [`tools/`](shared/tools/README.md), [`mcp_servers/`](shared/mcp_servers/README.md), [`a2a/`](shared/a2a/README.md), [`evals/`](shared/evals/README.md), [`doctrine/`](shared/doctrine/README.md) and [`tests/`](shared/tests/README.md) |
 | [`evals/`](evals/README.md) | The `python -m evals` runner and its flags |
 | [`.github/workflows/`](.github/workflows/README.md) | What CI runs and how to reproduce it locally |
+| [`infra/`](infra/README.md) | Terraform and Bicep for hosting the API; [`docs/deployment.md`](docs/deployment.md) covers the pipeline |
 | `projects/NN-name/` | Each project README ends with a **Project structure** table linking its package, `tests/` and `evals/` READMEs, e.g. [`03-refund-agent`](projects/03-refund-agent/README.md#project-structure) |
 
 ## Setup

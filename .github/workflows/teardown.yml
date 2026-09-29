@@ -1,0 +1,52 @@
+# Manual teardown of one environment. Gated by DEPLOY_ENABLED == 'true' like deploy.yml, runs in
+# the matching GitHub Environment (so prod teardown also needs reviewer approval), and requires
+# typing the environment name to confirm.
+name: teardown
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to destroy"
+        type: choice
+        options: [dev, prod]
+        default: dev
+      deploy_tool:
+        description: "Tool that created it"
+        type: choice
+        options: [terraform, bicep]
+        default: terraform
+      confirm:
+        description: "Type the environment name again to confirm"
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  teardown:
+    if: vars.DEPLOY_ENABLED == 'true' && inputs.confirm == inputs.environment
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET_ENV: ${{ inputs.environment }}
+      DEPLOY_TOOL: ${{ inputs.deploy_tool }}
+      LOCATION: ${{ vars.AZURE_LOCATION || 'eastus2' }}
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TFSTATE_RESOURCE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+      TFSTATE_STORAGE_ACCOUNT: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.16.4", terraform_wrapper: false }
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Destroy
+        run: .github/scripts/deploy.sh destroy

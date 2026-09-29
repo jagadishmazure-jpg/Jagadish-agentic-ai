@@ -1,0 +1,45 @@
+# checkov config for the Terraform stacks (used by .github/workflows/infra-ci.yml).
+# Every skip below is a deliberate trade-off for the cost-min dev profile, with the prod answer
+# noted. Anything not listed fails the pull request.
+framework:
+  - terraform
+compact: true
+quiet: true
+skip-check:
+  # --- premium-only features (customer-managed keys, double encryption, zone/geo redundancy,
+  #     ACR content trust/quarantine/retention, dedicated data endpoints, Search replicas for SLA).
+  #     Not available or not cost-effective on the SKUs this demo targets; listed as prod
+  #     hardening in docs/best-practices.md.
+  - CKV2_AZURE_22
+  - CKV_AZURE_100
+  - CKV_AZURE_199
+  - CKV_AZURE_201
+  - CKV_AZURE_163
+  - CKV_AZURE_164
+  - CKV_AZURE_165
+  - CKV_AZURE_166
+  - CKV_AZURE_167
+  - CKV_AZURE_233
+  - CKV_AZURE_237
+  - CKV_AZURE_208
+  - CKV_AZURE_209
+  # --- public network access: dev keeps public endpoints with Entra-ID-only auth (keys and SAS
+  #     disabled). prod.tfvars sets private_link = true, which adds private endpoints and turns
+  #     public access off for the data services. APIM Consumption cannot join a VNet.
+  - CKV_AZURE_99
+  - CKV_AZURE_101
+  - CKV_AZURE_107
+  - CKV_AZURE_124
+  - CKV_AZURE_134
+  - CKV_AZURE_139
+  - CKV_AZURE_174
+  - CKV_AZURE_189
+  - CKV_AZURE_204
+  - CKV2_AZURE_32
+  - CKV_AZURE_109
+  # --- Key Vault purge protection is a variable: off in dev so teardown is clean, on in prod.tfvars.
+  - CKV_AZURE_42
+  - CKV_AZURE_110
+  # --- false positive: the check reads the deprecated attribute; the module sets
+  #     local_authentication_enabled = false.
+  - CKV_AZURE_140
