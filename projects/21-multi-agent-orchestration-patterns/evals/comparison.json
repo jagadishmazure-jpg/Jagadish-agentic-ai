@@ -1,0 +1,319 @@
+{
+  "golden_cases": [
+    "l-2101",
+    "l-2102",
+    "l-2103",
+    "l-2104",
+    "l-2105",
+    "l-2106",
+    "l-2107",
+    "l-2108",
+    "l-2109",
+    "l-2110",
+    "l-2111",
+    "l-2112",
+    "l-2113",
+    "l-2114"
+  ],
+  "fault_case": "L-2101",
+  "patterns": [
+    {
+      "pattern": "sequential",
+      "n": 14,
+      "quality": 0.7857,
+      "groundedness": 0.7857,
+      "policy_violations": 0.0,
+      "avg_llm_calls": 4.0,
+      "avg_tokens": 1030,
+      "avg_tool_calls": 3.0,
+      "avg_turns": 5.0,
+      "avg_latency_s": 5.31,
+      "failed_cases": [
+        "l-2105",
+        "l-2111",
+        "l-2113"
+      ]
+    },
+    {
+      "pattern": "concurrent",
+      "n": 14,
+      "quality": 0.7857,
+      "groundedness": 0.7857,
+      "policy_violations": 0.0,
+      "avg_llm_calls": 4.0,
+      "avg_tokens": 1030,
+      "avg_tool_calls": 6.0,
+      "avg_turns": 5.0,
+      "avg_latency_s": 3.49,
+      "failed_cases": [
+        "l-2105",
+        "l-2111",
+        "l-2113"
+      ]
+    },
+    {
+      "pattern": "supervisor",
+      "n": 14,
+      "quality": 1.0,
+      "groundedness": 1.0,
+      "policy_violations": 0.0,
+      "avg_llm_calls": 9.64,
+      "avg_tokens": 1915,
+      "avg_tool_calls": 3.0,
+      "avg_turns": 10.86,
+      "avg_latency_s": 7.74,
+      "failed_cases": []
+    },
+    {
+      "pattern": "hierarchical",
+      "n": 14,
+      "quality": 1.0,
+      "groundedness": 1.0,
+      "policy_violations": 0.0,
+      "avg_llm_calls": 15.64,
+      "avg_tokens": 2695,
+      "avg_tool_calls": 3.0,
+      "avg_turns": 16.86,
+      "avg_latency_s": 8.54,
+      "failed_cases": []
+    },
+    {
+      "pattern": "swarm",
+      "n": 14,
+      "quality": 1.0,
+      "groundedness": 1.0,
+      "policy_violations": 0.0,
+      "avg_llm_calls": 4.21,
+      "avg_tokens": 1289,
+      "avg_tool_calls": 3.0,
+      "avg_turns": 5.43,
+      "avg_latency_s": 5.79,
+      "failed_cases": []
+    },
+    {
+      "pattern": "group_chat",
+      "n": 14,
+      "quality": 1.0,
+      "groundedness": 1.0,
+      "policy_violations": 0.0,
+      "avg_llm_calls": 17.5,
+      "avg_tokens": 5329,
+      "avg_tool_calls": 3.0,
+      "avg_turns": 18.71,
+      "avg_latency_s": 14.53,
+      "failed_cases": []
+    },
+    {
+      "pattern": "magentic",
+      "n": 14,
+      "quality": 1.0,
+      "groundedness": 1.0,
+      "policy_violations": 0.0,
+      "avg_llm_calls": 11.64,
+      "avg_tokens": 2627,
+      "avg_tool_calls": 3.0,
+      "avg_turns": 12.86,
+      "avg_latency_s": 11.97,
+      "failed_cases": []
+    },
+    {
+      "pattern": "blackboard",
+      "n": 14,
+      "quality": 1.0,
+      "groundedness": 1.0,
+      "policy_violations": 0.0,
+      "avg_llm_calls": 4.21,
+      "avg_tokens": 1103,
+      "avg_tool_calls": 3.0,
+      "avg_turns": 5.43,
+      "avg_latency_s": 4.7,
+      "failed_cases": []
+    }
+  ],
+  "faults": {
+    "sequential": {
+      "analyst_down": {
+        "outcome": "safe stop: worker_failed:analyst",
+        "turns": 2,
+        "llm_calls": 1,
+        "tokens": 150,
+        "filed": 0
+      },
+      "looping_reviewer": {
+        "outcome": "safe stop: review_failed",
+        "turns": 5,
+        "llm_calls": 4,
+        "tokens": 1043,
+        "filed": 0
+      },
+      "bad_handoff": {
+        "outcome": "n/a",
+        "turns": 5,
+        "llm_calls": 4,
+        "tokens": 1043,
+        "filed": 1
+      }
+    },
+    "concurrent": {
+      "analyst_down": {
+        "outcome": "safe stop: worker_failed:analyst",
+        "turns": 3,
+        "llm_calls": 2,
+        "tokens": 627,
+        "filed": 0
+      },
+      "looping_reviewer": {
+        "outcome": "safe stop: review_failed",
+        "turns": 5,
+        "llm_calls": 4,
+        "tokens": 1043,
+        "filed": 0
+      },
+      "bad_handoff": {
+        "outcome": "n/a",
+        "turns": 5,
+        "llm_calls": 4,
+        "tokens": 1043,
+        "filed": 1
+      }
+    },
+    "supervisor": {
+      "analyst_down": {
+        "outcome": "safe stop: worker_failed:analyst",
+        "turns": 7,
+        "llm_calls": 5,
+        "tokens": 1065,
+        "filed": 0
+      },
+      "looping_reviewer": {
+        "outcome": "safe stop: review_failed_after_revision",
+        "turns": 14,
+        "llm_calls": 12,
+        "tokens": 2417,
+        "filed": 0
+      },
+      "bad_handoff": {
+        "outcome": "recovered",
+        "turns": 10,
+        "llm_calls": 9,
+        "tokens": 1785,
+        "filed": 1
+      }
+    },
+    "hierarchical": {
+      "analyst_down": {
+        "outcome": "safe stop: worker_failed:analyst",
+        "turns": 8,
+        "llm_calls": 7,
+        "tokens": 1285,
+        "filed": 0
+      },
+      "looping_reviewer": {
+        "outcome": "safe stop: review_failed_after_revision",
+        "turns": 19,
+        "llm_calls": 17,
+        "tokens": 2980,
+        "filed": 0
+      },
+      "bad_handoff": {
+        "outcome": "recovered",
+        "turns": 16,
+        "llm_calls": 15,
+        "tokens": 2575,
+        "filed": 1
+      }
+    },
+    "swarm": {
+      "analyst_down": {
+        "outcome": "safe stop: worker_failed:analyst",
+        "turns": 2,
+        "llm_calls": 1,
+        "tokens": 203,
+        "filed": 0
+      },
+      "looping_reviewer": {
+        "outcome": "safe stop: ping_pong_detected",
+        "turns": 8,
+        "llm_calls": 6,
+        "tokens": 1958,
+        "filed": 0
+      },
+      "bad_handoff": {
+        "outcome": "recovered",
+        "turns": 6,
+        "llm_calls": 5,
+        "tokens": 1323,
+        "filed": 1
+      }
+    },
+    "group_chat": {
+      "analyst_down": {
+        "outcome": "safe stop: worker_failed:analyst",
+        "turns": 4,
+        "llm_calls": 3,
+        "tokens": 479,
+        "filed": 0
+      },
+      "looping_reviewer": {
+        "outcome": "safe stop: no_progress",
+        "turns": 22,
+        "llm_calls": 20,
+        "tokens": 6562,
+        "filed": 0
+      },
+      "bad_handoff": {
+        "outcome": "recovered",
+        "turns": 19,
+        "llm_calls": 18,
+        "tokens": 5501,
+        "filed": 1
+      }
+    },
+    "magentic": {
+      "analyst_down": {
+        "outcome": "recovered",
+        "turns": 16,
+        "llm_calls": 14,
+        "tokens": 3113,
+        "filed": 1
+      },
+      "looping_reviewer": {
+        "outcome": "safe stop: stalled",
+        "turns": 28,
+        "llm_calls": 24,
+        "tokens": 5636,
+        "filed": 0
+      },
+      "bad_handoff": {
+        "outcome": "recovered",
+        "turns": 12,
+        "llm_calls": 11,
+        "tokens": 2474,
+        "filed": 1
+      }
+    },
+    "blackboard": {
+      "analyst_down": {
+        "outcome": "recovered",
+        "turns": 6,
+        "llm_calls": 4,
+        "tokens": 1043,
+        "filed": 1
+      },
+      "looping_reviewer": {
+        "outcome": "safe stop: no_progress",
+        "turns": 7,
+        "llm_calls": 5,
+        "tokens": 1342,
+        "filed": 0
+      },
+      "bad_handoff": {
+        "outcome": "n/a",
+        "turns": 5,
+        "llm_calls": 4,
+        "tokens": 1043,
+        "filed": 1
+      }
+    }
+  }
+}

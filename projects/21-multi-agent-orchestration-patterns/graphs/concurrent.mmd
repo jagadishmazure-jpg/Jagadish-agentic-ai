@@ -1,0 +1,30 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	researcher(researcher)
+	policy(policy)
+	analyst(analyst)
+	drafter(drafter)
+	reviewer(reviewer)
+	join(join)
+	finish(finish)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> analyst;
+	__start__ --> policy;
+	__start__ --> researcher;
+	analyst --> join;
+	drafter -.-> finish;
+	drafter -.-> reviewer;
+	join -.-> drafter;
+	join -.-> finish;
+	policy --> join;
+	researcher --> join;
+	reviewer --> finish;
+	finish --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

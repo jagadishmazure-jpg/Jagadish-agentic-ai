@@ -1,0 +1,42 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	intake(intake)
+	sequential(sequential)
+	concurrent(concurrent)
+	supervisor(supervisor)
+	hierarchical(hierarchical)
+	swarm(swarm)
+	group_chat(group_chat)
+	magentic(magentic)
+	blackboard(blackboard)
+	human_gate(human_gate)
+	finalize(finalize)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> intake;
+	blackboard --> human_gate;
+	concurrent --> human_gate;
+	group_chat --> human_gate;
+	hierarchical --> human_gate;
+	human_gate --> finalize;
+	intake -.-> blackboard;
+	intake -.-> concurrent;
+	intake -.-> finalize;
+	intake -.-> group_chat;
+	intake -.-> hierarchical;
+	intake -.-> magentic;
+	intake -.-> sequential;
+	intake -.-> supervisor;
+	intake -.-> swarm;
+	magentic --> human_gate;
+	sequential --> human_gate;
+	supervisor --> human_gate;
+	swarm --> human_gate;
+	finalize --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

@@ -1,0 +1,139 @@
+project: 21-multi-agent-orchestration-patterns
+title: Multi-agent orchestration patterns, compared on one loan-exception task
+owner: Jagadish Meduri
+industry: Banking (mortgage underwriting exceptions)
+summary: >-
+  One realistic task (resolve a mortgage underwriting exception: research the loan file,
+  analyse ratios, check the credit policy in force, draft a cited memo) solved by eight
+  orchestration patterns as LangGraph graphs: sequential, concurrent fan-out/fan-in,
+  supervisor, hierarchical teams, handoff swarm, moderated group chat/debate, magentic
+  (task and progress ledgers) and blackboard. A common harness enforces budgets, loop and
+  ping-pong detection, route validation, termination and tracing, and a comparison runner
+  scores every pattern on the same golden set and under injected faults.
+maturity:
+  level: 3
+  rationale: every pattern shares least-privilege MCP identities, as-of policy retrieval with ACL, a deterministic critic, budgets and a human gate for referrals; comparison numbers are regenerated from runs and gated in CI
+  next_rung: run the comparison against a real model deployment on a larger sampled set and promote the chosen pattern behind the control-plane registry (project 12) with per-pattern kill switches
+kpis:
+  - {name: Exception memos accepted without rework, target: ">= 90% of completed memos", measure: "senior underwriter QC outcome per filed memo"}
+  - {name: Wrong exception decisions filed, target: "0", measure: "QC overturns where the filed decision contradicts the policy edition in force"}
+  - {name: Referral precision, target: ">= 80% of referrals need a committee or officer decision", measure: "credit officer disposition of human_gate referrals"}
+  - {name: Cost per resolved exception, target: "tracked per pattern; alert on +25% week over week", measure: "LLM calls and tokens per case from agent spans"}
+roi: >-
+  Underwriters spend time assembling the same four inputs for every exception ticket. A pattern
+  that gets the memo right first time saves that assembly and review time; the comparison shows
+  which pattern buys the needed quality at the lowest model cost and latency, and which ones fail
+  safely when a worker is down or loops. Cost is model tokens (tracked per pattern) and officer
+  time on referrals. The main risk is a wrong decision filed, which the critic, the policy-as-code
+  check and the human gate are there to prevent.
+planes:
+  experience: underwriter exception ticket in; filed memo on the loan; credit officer approval step for referrals (interrupt payload with reason, citations and memo)
+  agent: arena LangGraph graph (intake -> one of eight pattern graphs -> human_gate -> finalize); each pattern is its own graph over shared worker agents inside a common harness (budgets, loop detection, route validation, OTel spans per agent turn)
+  knowledge: credit-policy corpus through the shared context builder (hybrid retrieval, ACL by principal, as-of the application date); restricted committee minutes trimmed before ranking
+  data: loan origination system and credit bureau through MCP servers with one scoped gateway per identity; the memo is filed by the orchestrator identity only (idempotent, dry-run default)
+systems_of_record:
+  - {name: Loan origination system, kind: mcp, contract: "loan_system.get_loan_file, loan_system.get_appraisal (read); loan_system.file_exception_memo (write, idempotent)", access: read_write}
+  - {name: Credit bureau, kind: mcp, contract: "credit_bureau.get_credit_summary (read)", access: read}
+knowledge:
+  corpora:
+    - {name: credit-policy, owner: credit-policy, acl: "underwriting group; committee minutes restricted to credit-committee", temporal: "DTI rule has 2025 and 2026 editions; retrieval as-of the application date", refresh_sla: "on credit policy committee approval", sensitivity: internal}
+  notes: Limits come from the rule registry keyed by the cited policy id, never from model prose; the policy agent's topic mapping is validated against the retrieved ids.
+contracts:
+  mcp:
+    - "loan_system.get_loan_file(loan_id) -> LoanFile (borrower note is untrusted text)"
+    - "loan_system.get_appraisal(loan_id) -> {status, value}"
+    - "loan_system.file_exception_memo(loan_id, decision, memo, idempotency_key, dry_run) -> {memo_id}"
+    - "credit_bureau.get_credit_summary(loan_id) -> {fico}"
+  a2a: []
+  notes: Workers are in-process functions behind Harness.turn; any of them could become an A2A agent (project 12) without changing the pattern graphs.
+identities:
+  - {identity: mi-exception-researcher, allow: [loan_system.get_loan_file, loan_system.get_appraisal, credit_bureau.get_credit_summary]}
+  - {identity: mi-exception-analyst, allow: [loan_system.get_loan_file, loan_system.get_appraisal, credit_bureau.get_credit_summary]}
+  - {identity: mi-exception-filer, allow: [loan_system.file_exception_memo]}
+stop_conditions:
+  - harness budgets per run (30 agent turns, 40 LLM calls, 40k estimated tokens) -> budget_exhausted referral
+  - loop control per pattern - one revision (supervisor, hierarchical), ping-pong A-B-A-B-A-B (swarm), repeated review issues (group chat, blackboard), stall counter with at most one replan (magentic), 16 speaker rounds (group chat)
+  - every model-proposed route, handoff or speaker is validated against the registry and prerequisites; a bad target is rejected (fallback or one re-ask), never executed
+  - only a reviewer-passed memo counts as completed; every other stop is a referral to the human gate, never a guessed decision
+  - no agent can file; filing is the orchestrator identity in finalize, idempotent per loan, pattern and decision
+graph: orchestration_lab.graph:build_graph
+failure_playbook:
+  - node: intake
+    success: ticket loaded for a known loan and a registered pattern
+    retry: n/a (local ticket read)
+    compensate: n/a
+    degrade: n/a
+    escalate: unknown loan or pattern -> rejected, nothing runs
+  - node: sequential
+    success: one pass researcher -> analyst -> policy -> drafter -> reviewer passes
+    retry: gateway backoff on SoR reads only
+    compensate: n/a (read-only until finalize)
+    degrade: model down -> each worker's deterministic path
+    escalate: any worker failure or a failed review (no loop back) -> referral
+  - node: concurrent
+    success: researcher, policy and analyst fan out in one super-step; join; draft; review passes
+    retry: gateway backoff on SoR reads only
+    compensate: n/a (read-only until finalize)
+    degrade: model down -> deterministic worker paths
+    escalate: a failed branch or failed review -> referral
+  - node: supervisor
+    success: validated routes until the reviewer passes the memo
+    retry: one retry per failed worker; one revision after a failed review
+    compensate: n/a (read-only until finalize)
+    degrade: invalid/unparseable route or model down -> deterministic plan
+    escalate: worker fails twice, second review failure or budget -> referral
+  - node: hierarchical
+    success: top supervisor runs evidence and policy teams in parallel, then the decision team; review passes
+    retry: one revision inside the decision team
+    compensate: n/a (read-only until finalize)
+    degrade: invalid top or team-lead route -> deterministic team plan
+    escalate: a failed member ends its team and the top supervisor refers the file
+  - node: swarm
+    success: peer handoffs until the reviewer hands off to END with a passed review
+    retry: an invalid handoff target gets one re-ask of the sending agent
+    compensate: n/a (read-only until finalize)
+    degrade: model down -> deterministic handoff choice
+    escalate: second bad handoff, ping-pong, worker down or budget -> referral
+  - node: group_chat
+    success: moderator-led chat reaches consensus, drafter writes, reviewer passes
+    retry: n/a (moderator re-selects speakers)
+    compensate: n/a (read-only until finalize)
+    degrade: invalid speaker or model down -> deterministic speaker policy
+    escalate: max rounds, repeated review issues, missing evidence worker or budget -> referral
+  - node: magentic
+    success: progress ledger reports the request satisfied after a passed review
+    retry: stall or failed assignee -> replan (at most once)
+    compensate: n/a (read-only until finalize)
+    degrade: invalid ledger or speaker -> deterministic ledger; failed worker's task moves to another capable agent
+    escalate: stalled after replan, no capable agent for a task, or budget -> referral
+  - node: blackboard
+    success: control fires eligible sources until the review on the board passes
+    retry: a failed review makes the drafter eligible again
+    compensate: n/a (read-only until finalize)
+    degrade: failed analyst -> researcher's ratio calculator posts the analysis
+    escalate: no eligible source, repeated review issues or budget -> referral
+  - node: human_gate
+    success: no referral, or a credit officer decides the referred file
+    retry: n/a
+    compensate: n/a
+    degrade: n/a
+    escalate: is the human gate (interrupt with reason, citations and memo)
+  - node: finalize
+    success: completed memo filed once (idempotency key per loan, pattern and decision)
+    retry: gateway backoff on the filing call
+    compensate: n/a (filing is a record, not a funding action)
+    degrade: n/a
+    escalate: loan system down at filing -> memo not filed, recorded for the underwriter
+chaos:
+  - {fault: model, node: supervisor, exit: degrade, invariant: "every worker and the router take their deterministic path; zero LLM calls; correct decision filed once"}
+  - {fault: "sor:loan_system", node: swarm, exit: escalate, invariant: "researcher cannot read the file -> swarm refers the case; nothing filed"}
+  - {fault: retrieval, node: magentic, exit: escalate, invariant: "policy agent fails; replan finds no capable agent for rules -> referral; nothing filed"}
+  - {fault: jailbreak, node: group_chat, exit: degrade, invariant: "injected borrower note neutralised by the gateway; decision unchanged; no injected text in memo or trace"}
+eval:
+  golden: evals/golden.jsonl
+  suite: orchestration_lab.eval_suite:run_case
+  thresholds:
+    task_success: ">=0.95"
+    groundedness: ">=0.95"
+    policy_violation_rate: "<=0"
+    cost_per_task: "<=0.003"

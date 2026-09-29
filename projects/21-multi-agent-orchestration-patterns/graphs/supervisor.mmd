@@ -1,0 +1,31 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	supervisor(supervisor)
+	researcher(researcher)
+	analyst(analyst)
+	policy(policy)
+	drafter(drafter)
+	reviewer(reviewer)
+	finish(finish)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> supervisor;
+	analyst --> supervisor;
+	drafter --> supervisor;
+	policy --> supervisor;
+	researcher --> supervisor;
+	reviewer --> supervisor;
+	supervisor -.-> analyst;
+	supervisor -.-> drafter;
+	supervisor -.-> finish;
+	supervisor -.-> policy;
+	supervisor -.-> researcher;
+	supervisor -.-> reviewer;
+	finish --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
