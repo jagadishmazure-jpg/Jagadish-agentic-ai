@@ -154,7 +154,7 @@ second customer getting nothing of the first's, then forgets one fact and finall
 
 Remembering who the customer is and what they asked last time shortens conversations and
 makes hand-offs to human agents smoother, because the context is already there. The controls
-are what make it deployable in a bank: consent-gated writes, no credentials, poisoning refused
+are what a bank would ask for before deploying it: consent-gated writes, no credentials, poisoning refused
 and flagged, and erasure that can be proven to a regulator. Measure it with repeat-question
 rate, handle time for returning customers, CSAT on returning sessions, poisoning flags per
 10,000 turns and erasure completion time, before and after.

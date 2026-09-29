@@ -10,6 +10,5 @@ curl -X POST localhost:8000/projects/03-refund-agent/evals
 
 | File | What it does |
 |---|---|
-| [`__pycache__/`](__pycache__/README.md) |  |
 | [`__init__.py`](__init__.py) | Package marker. |
 | [`app.py`](app.py) | `create_app()`: `/healthz`, `/readyz`, `/projects`, `/projects/{id}` (doctrine summary + checked-in scores), `POST /projects/{id}/evals` (rerun the golden set, no writes). |

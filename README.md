@@ -7,11 +7,13 @@
 - **Built-in safety and governance:** human approval before risky actions, prompt-injection guardrails, access-controlled retrieval (RAG), and long-term customer memory that can forget on request (right to be forgotten).
 - **Quality is measured, not assumed:** eval gates in CI block a release if scores regress, and a fine-tuning study on synthetic mortgage document classification lifts test accuracy from 0.64 to 0.97 while using about 90% fewer input tokens per call (run offline).
 - **500 automated tests** run on every push in GitHub Actions, alongside lint and eval gates.
-- **Deployable as a small service:** a FastAPI catalog/eval API ([`shared/api`](shared/api/README.md)) in one container image, with Terraform and Bicep for Azure Container Apps ([`infra/`](infra/README.md)) and a GitHub Actions pipeline with OIDC login and dev -> prod approval gates. The pipeline is switched off until a subscription exists ([docs/deployment.md](docs/deployment.md)).
+- **Packaged as a small service:** a FastAPI catalog/eval API ([`shared/api`](shared/api/README.md)) in one container image, with Terraform and Bicep for Azure Container Apps ([`infra/`](infra/README.md)) and a GitHub Actions pipeline with OIDC login and dev -> prod approval gates. The pipeline is switched off until a subscription exists ([docs/deployment.md](docs/deployment.md)).
 
 **Skills demonstrated:** Python, LangGraph, LangChain, RAG, MCP, A2A, LLM evaluation, fine-tuning, OpenTelemetry, FastAPI, Docker, Terraform, Bicep, Azure Container Apps, CI/CD (GitHub Actions, OIDC).
 
 *Honesty note: everything runs offline against a deterministic mock model and mock enterprise services; it has not been deployed to live Azure yet (see "Offline by default" below).*
+
+**Contents:** [What](#at-a-glance-for-recruiters) · [Why](#why-it-exists) · [Architecture](#architecture-four-planes-and-the-shared-platform) · [Run](#setup) · [Test](#run-tests-and-lint) · [Deploy](#deploy) · [Limits](#limits) · [Docs](#documentation)
 
 Twenty-one production-style business agents built with **LangGraph** and **LangChain**, put together
 by Jagadish Meduri over a 12-week prep for Staff-level agentic AI engineering interviews.
@@ -29,6 +31,10 @@ generated `DOCTRINE.md`; CI blocks promotion if any of it is missing or the eval
 > This covers tests, CI, and demos. To use a real model, set Azure OpenAI or OpenAI env vars
 > (see [`.env.example`](.env.example)) and the shared factory in [`shared/llm.py`](shared/llm.py)
 > picks it up automatically. You don't need to change any code.
+
+## Why it exists
+
+Most agent demos show the happy path. Interviewers and clients ask about the rest: what happens when the model or a system of record is down, who approved a risky action, which documents a user was allowed to see, and how a regression gets caught before release. Each project answers those questions for one real workflow, with the same shared controls, so the patterns can be compared rather than re-invented.
 
 ## Projects
 
@@ -159,7 +165,7 @@ evals/              # `python -m evals` runner for all projects
 projects/NN-name/   # README, package, tests, run.py, doctrine.yaml, DOCTRINE.md, evals/
 .github/workflows/  # CI: ruff + pytest + eval gate + doctrine gate (offline); infra checks; gated deploy
 infra/              # Terraform (primary) and Bicep for Azure Container Apps
-docs/               # deployment.md: pipeline, OIDC setup, approval gates
+docs/               # deployment.md, best-practices.md, adr/ (architecture decisions)
 Dockerfile          # API image (uv, non-root)
 ```
 
@@ -241,6 +247,31 @@ Provider resolution works like this: `LLM_PROVIDER` (mock|azure|openai) wins if 
 Azure is used when `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, and `AZURE_OPENAI_DEPLOYMENT`
 are all present. Failing that, OpenAI is used when `OPENAI_API_KEY` is present. If none of these
 apply, the mock model is used.
+
+## Deploy
+
+Nothing is deployed. The portfolio can be hosted as one small service: [`shared/api`](shared/api/README.md) (list projects, read scores, rerun a golden set, mock model only) in the root [`Dockerfile`](Dockerfile), on Azure Container Apps via [`infra/terraform`](infra/terraform/README.md) or [`infra/bicep`](infra/bicep/README.md). The GitHub Actions pipeline ([docs/deployment.md](docs/deployment.md)) builds the image, signs in with OIDC and goes dev -> prod with an approval; it stays switched off until the repository variable `DEPLOY_ENABLED` is set.
+
+```bash
+uvicorn shared.api.app:create_app --factory --port 8000   # run the API locally
+```
+
+## Limits
+
+* Everything runs against a deterministic mock model, mock systems of record and synthetic data. Eval scores measure the graphs, retrieval and policies, not a real model's quality.
+* The real-model path works with an API key only; keyless (managed identity) access to Azure OpenAI is planned, so the Azure deployment runs the mock.
+* The Terraform and Bicep pass validation, offline plan tests, tflint and checkov, but have never been applied. The pipeline's GitHub Environments and reviewers do not exist yet.
+* Project 11's own skeleton Bicep (`projects/11-customer-care-e2e/deploy/azure/`) is separate from this pipeline and not mirrored in Terraform.
+* The fine-tuning study (19) trains an offline stand-in model; the Azure OpenAI fine-tuning script is a dry run.
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [`docs/best-practices.md`](docs/best-practices.md) | Enterprise cloud and agentic AI practices, each marked implemented, written-not-deployed or planned, with links to the code |
+| [`docs/adr/`](docs/adr/README.md) | Architecture decision records (Bicep + Terraform, offline mocks, OIDC, eval gates, gated deploy, ...) |
+| [`docs/deployment.md`](docs/deployment.md) | The GitHub Actions pipeline and the one-time Azure setup it needs |
+| [`SECURITY.md`](SECURITY.md) · [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`CHANGELOG.md`](CHANGELOG.md) | How to report a vulnerability, how to contribute, what changed |
 
 ## License
 

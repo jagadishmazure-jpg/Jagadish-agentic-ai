@@ -50,14 +50,14 @@ Nothing below has been done yet; it is the checklist for the first real deployme
 
 1. **Identities.** Create one Entra app registration (or user-assigned managed identity) per environment, for example `gh-portfolio-dev` and `gh-portfolio-prod`. Give each a service principal.
 2. **Federated credentials** (no secrets). On each identity add a GitHub credential with issuer `https://token.actions.githubusercontent.com` and audience `api://AzureADTokenExchange`:
-   - dev deploy: subject `repo:jagadishmazure-jpg/Jagadish-agentic-ai-portfolio:environment:dev`
-   - prod deploy: subject `repo:jagadishmazure-jpg/Jagadish-agentic-ai-portfolio:environment:prod`
-   - PR plans (optional, read-only identity): subject `repo:jagadishmazure-jpg/Jagadish-agentic-ai-portfolio:pull_request`
+   - dev deploy: subject `repo:jagadishmazure-jpg/Jagadish-agentic-ai:environment:dev`
+   - prod deploy: subject `repo:jagadishmazure-jpg/Jagadish-agentic-ai:environment:prod`
+   - PR plans (optional, read-only identity): subject `repo:jagadishmazure-jpg/Jagadish-agentic-ai:pull_request`
 
    ```bash
    az ad app federated-credential create --id <app-object-id> --parameters '{
      "name": "gh-dev", "issuer": "https://token.actions.githubusercontent.com",
-     "subject": "repo:jagadishmazure-jpg/Jagadish-agentic-ai-portfolio:environment:dev",
+     "subject": "repo:jagadishmazure-jpg/Jagadish-agentic-ai:environment:dev",
      "audiences": ["api://AzureADTokenExchange"] }'
    ```
 3. **RBAC, least privilege.** Scope each identity to its own subscription or resource group: `Contributor` plus `Role Based Access Control Administrator` with a condition that limits it to the data-plane roles the stack assigns, and `Storage Blob Data Contributor` on the Terraform state container. The PR-plan identity gets `Reader` and state read access only.
