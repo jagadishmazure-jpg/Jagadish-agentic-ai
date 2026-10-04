@@ -53,7 +53,7 @@ def test_every_folder_has_a_readme():
     dirs = [d for d in tracked_dirs() if d != ROOT / ".github"]
     missing = [str(d.relative_to(ROOT)) for d in dirs if not (d / "README.md").exists()]
     assert not missing
-    # .github/README.md must not exist: GitHub would show it instead of the root README on the repo page.
+    # No .github/README.md: GitHub would show it instead of the root README.
     assert not (ROOT / ".github/README.md").exists()
 
 
