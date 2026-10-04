@@ -2,7 +2,7 @@
 
 The portfolio is a set of offline agent projects, so there is no large platform to deploy. This stack hosts the small FastAPI service in [`shared/api`](../../shared/api/README.md) (list projects, read eval scores, rerun a project's golden set) on Azure Container Apps: a user-assigned managed identity with `AcrPull`, Log Analytics + App Insights, Key Vault (RBAC), ACR, a scale-to-zero Container Apps environment and, when `live_llm = true`, an Azure AI Foundry account with a primary and a fallback model deployment and `Cognitive Services OpenAI User` for the identity. [`../bicep/main.bicep`](../bicep/main.bicep) is the same stack in Bicep.
 
-**Live model mode is planned, not implemented:** `shared/llm.py` authenticates to Azure OpenAI with an API key today. The deployed app therefore runs the deterministic mock (`LLM_PROVIDER=mock`) unless `PORTFOLIO_ALLOW_LIVE=1` is set, and keyless (managed identity) model access is future work.
+**Live model mode is opt-in:** with `live_llm = true` the app gets `LLM_PROVIDER=azure`, `PORTFOLIO_ALLOW_LIVE=1`, `AZURE_CLIENT_ID` and the Cognitive Services OpenAI User role, and `shared/llm.py` authenticates keyless through `DefaultAzureCredential` (no key is stored). Otherwise the deployed app runs the deterministic mock (`LLM_PROVIDER=mock`). Neither mode has been applied.
 
 ## Bicep or Terraform?
 

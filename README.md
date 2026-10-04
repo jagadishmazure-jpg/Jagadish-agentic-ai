@@ -244,8 +244,9 @@ python projects/03-refund-agent/run.py
 ```
 
 Provider resolution works like this: `LLM_PROVIDER` (mock|azure|openai) wins if set. Otherwise
-Azure is used when `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, and `AZURE_OPENAI_DEPLOYMENT`
-are all present. Failing that, OpenAI is used when `OPENAI_API_KEY` is present. If none of these
+Azure is used when `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT` are present. Azure
+authentication is keyless by default (`DefaultAzureCredential`: managed identity in Azure, `az login`
+locally, with the Cognitive Services OpenAI User role); `AZURE_OPENAI_API_KEY` is used only when set. Failing that, OpenAI is used when `OPENAI_API_KEY` is present. If none of these
 apply, the mock model is used.
 
 ## Deploy
@@ -259,7 +260,7 @@ uvicorn shared.api.app:create_app --factory --port 8000   # run the API locally
 ## Limits
 
 * Everything runs against a deterministic mock model, mock systems of record and synthetic data. Eval scores measure the graphs, retrieval and policies, not a real model's quality.
-* The real-model path works with an API key only; keyless (managed identity) access to Azure OpenAI is planned, so the Azure deployment runs the mock.
+* The real-model path is keyless (managed identity through `DefaultAzureCredential`) and unit-tested with fakes, but it has never called a live Azure OpenAI endpoint. The deployed API runs the mock unless `live_llm = true`.
 * The Terraform and Bicep pass validation, offline plan tests, tflint and checkov, but have never been applied. The pipeline's GitHub Environments and reviewers do not exist yet.
 * Project 11's own skeleton Bicep (`projects/11-customer-care-e2e/deploy/azure/`) is separate from this pipeline and not mirrored in Terraform.
 * The fine-tuning study (19) trains an offline stand-in model; the Azure OpenAI fine-tuning script is a dry run.

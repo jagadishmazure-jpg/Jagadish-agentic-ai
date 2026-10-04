@@ -12,7 +12,7 @@ A checklist of enterprise cloud and agentic AI practices for this portfolio. Eac
 
 | Practice | What this repo does | Status | Where |
 |---|---|---|---|
-| **Identity: OIDC and managed identity** | CI signs in with `azure/login` over OIDC (no client secret). The API container runs as a user-assigned managed identity. **Gap:** `shared/llm.py` authenticates to Azure OpenAI with an API key, so keyless model access from the app is not implemented and the deployed app runs the mock model. | CI + identity written, not deployed; keyless model auth planned | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), [`identity module`](../infra/terraform/modules/identity/README.md), [`shared/llm.py`](../shared/llm.py), [ADR 0003](adr/0003-oidc-and-managed-identity.md) |
+| **Identity: OIDC and managed identity** | CI signs in with `azure/login` over OIDC (no client secret). The API container runs as a user-assigned managed identity, and `shared/llm.py` reaches Azure OpenAI keyless through `DefaultAzureCredential` and a bearer-token provider (an API key is used only if `AZURE_OPENAI_API_KEY` is set). The deployed app still defaults to the mock model unless `live_llm = true`. | CI + identity written, not deployed; keyless model auth implemented and unit-tested | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), [`identity module`](../infra/terraform/modules/identity/README.md), [`shared/llm.py`](../shared/llm.py), [ADR 0003](adr/0003-oidc-and-managed-identity.md) |
 | **Least privilege** | In Azure, the app identity gets AcrPull and, only when `live_llm = true`, Cognitive Services OpenAI User on the Foundry account. In code, project 09 gives each tool its own identity and allow-list. | Written, not deployed; tool identities implemented | [`infra/terraform/main.tf`](../infra/terraform/main.tf), [`09 collections`](../projects/09-collections-agent/README.md) |
 | **Networking** | The API is a small public HTTPS endpoint on Container Apps. There is no VNet or private endpoint for this stack. | Planned | [`containerapp module`](../infra/terraform/modules/containerapp/README.md) |
 | **Secrets** | No secrets in the repo or in CI; settings are listed in `.env.example` with no values; Key Vault (RBAC) is provisioned for anything that cannot use Entra ID. No secret scanner runs in CI yet. | Implemented (no secrets); CI scanning planned | [`.env.example`](../.env.example), [`keyvault module`](../infra/terraform/modules/keyvault/README.md) |
@@ -39,7 +39,6 @@ A checklist of enterprise cloud and agentic AI practices for this portfolio. Eac
 
 ## Known gaps, in priority order
 
-- Keyless Azure OpenAI access from `shared/llm.py` (managed identity via `DefaultAzureCredential`), so the deployed API can run a real model without a key.
 - Export traces to App Insights from the deployed API.
 - Secret scanning in CI.
 - Budgets and cost alerts for the dev and prod resource groups.

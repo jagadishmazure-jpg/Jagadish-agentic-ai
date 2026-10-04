@@ -9,7 +9,7 @@ A deploy pipeline needs to sign in to Azure, and the deployed workloads need to 
 
 ## Decision
 
-GitHub Actions signs in with `azure/login` using OpenID Connect and a federated credential on an Entra app registration, one subject per GitHub Environment (`dev`, `prod`); no client secret is stored. Workloads run as user-assigned managed identities with role assignments scoped to the resources they use (AcrPull, plus Cognitive Services OpenAI User when a live model is enabled; the app's own model calls still use an API key today, so keyless model access is planned). Terraform uses `ARM_USE_OIDC` and Entra ID auth for the state backend.
+GitHub Actions signs in with `azure/login` using OpenID Connect and a federated credential on an Entra app registration, one subject per GitHub Environment (`dev`, `prod`); no client secret is stored. Workloads run as user-assigned managed identities with role assignments scoped to the resources they use (AcrPull, plus Cognitive Services OpenAI User when a live model is enabled; the app's own model calls are keyless too: `shared/llm.py` uses `DefaultAzureCredential` with a bearer-token provider and falls back to an API key only when one is set). Terraform uses `ARM_USE_OIDC` and Entra ID auth for the state backend.
 
 ## Consequences
 

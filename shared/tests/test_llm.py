@@ -54,3 +54,88 @@ def test_mock_supports_tool_calling_agents():
     agent = create_agent(llm, [add])
     out = agent.invoke({"messages": [HumanMessage("2+3?")]})
     assert out["messages"][-1].content == "sum=5"
+
+
+def test_resolve_provider_azure_needs_no_key():
+    env = {"AZURE_OPENAI_ENDPOINT": "https://x", "AZURE_OPENAI_DEPLOYMENT": "d"}
+    assert resolve_provider(env) == "azure"
+
+
+def test_azure_auth_uses_key_only_when_set():
+    from shared.llm import azure_auth_kwargs
+
+    assert azure_auth_kwargs({"AZURE_OPENAI_API_KEY": "k"}) == {"api_key": "k"}
+
+
+def _fake_identity(monkeypatch):
+    import sys
+    import types
+
+    calls = {}
+    mod = types.ModuleType("azure.identity")
+
+    class FakeCredential:
+        pass
+
+    def get_bearer_token_provider(cred, scope):
+        calls["cred"], calls["scope"] = cred, scope
+        return lambda: "token"
+
+    mod.DefaultAzureCredential = FakeCredential
+    mod.get_bearer_token_provider = get_bearer_token_provider
+    monkeypatch.setitem(sys.modules, "azure.identity", mod)
+    return calls, FakeCredential
+
+
+def test_azure_auth_is_keyless_by_default(monkeypatch):
+    from shared.llm import AZURE_SCOPE, azure_auth_kwargs
+
+    calls, cred = _fake_identity(monkeypatch)
+    kw = azure_auth_kwargs({})
+    assert set(kw) == {"azure_ad_token_provider"} and kw["azure_ad_token_provider"]() == "token"
+    assert isinstance(calls["cred"], cred) and calls["scope"] == AZURE_SCOPE
+
+
+def test_get_llm_azure_keyless_passes_token_provider(monkeypatch):
+    import langchain_openai
+
+    _fake_identity(monkeypatch)
+    seen = {}
+
+    class FakeAzure:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+    monkeypatch.setattr(langchain_openai, "AzureChatOpenAI", FakeAzure)
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://x")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "d")
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    get_llm(provider="azure")
+    assert "api_key" not in seen and callable(seen["azure_ad_token_provider"])
+    assert seen["azure_deployment"] == "d"
+
+
+def test_get_llm_azure_with_key_does_not_touch_identity(monkeypatch):
+    import sys
+
+    import langchain_openai
+
+    seen = {}
+
+    class FakeAzure:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+    monkeypatch.setattr(langchain_openai, "AzureChatOpenAI", FakeAzure)
+    monkeypatch.setitem(sys.modules, "azure.identity", None)  # import would fail if attempted
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://x")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "d")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "k")
+    get_llm(provider="azure")
+    assert seen["api_key"] == "k" and "azure_ad_token_provider" not in seen
+
+
+def test_mock_stays_default_without_env(monkeypatch):
+    for v in ("LLM_PROVIDER", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT", "OPENAI_API_KEY"):
+        monkeypatch.delenv(v, raising=False)
+    assert isinstance(get_llm(), MockChatModel)

@@ -3,8 +3,10 @@
 ``get_llm()`` returns, in order of precedence:
 
 1. ``LLM_PROVIDER`` env var if set (``mock`` | ``azure`` | ``openai``).
-2. ``AzureChatOpenAI`` when AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY and
-   AZURE_OPENAI_DEPLOYMENT are all set.
+2. ``AzureChatOpenAI`` when AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT are set.
+   Authentication is keyless by default: a Microsoft Entra token from ``DefaultAzureCredential``
+   (managed identity in Azure, ``az login`` on a laptop) through a bearer-token provider.
+   AZURE_OPENAI_API_KEY is used only when it is set.
 3. ``ChatOpenAI`` when OPENAI_API_KEY is set.
 4. A deterministic :class:`MockChatModel` otherwise (tests, CI, laptops on a plane).
 
@@ -30,7 +32,29 @@ from pydantic import Field
 Provider = Literal["mock", "azure", "openai"]
 Responder = Callable[[Sequence[BaseMessage]], "str | AIMessage"]
 
-AZURE_VARS = ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT")
+AZURE_VARS = ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT")
+AZURE_SCOPE = "https://cognitiveservices.azure.com/.default"
+
+
+def azure_auth_kwargs(env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Keyword arguments that authenticate ``AzureChatOpenAI``.
+
+    Keyless by default: ``DefaultAzureCredential`` wrapped in a bearer-token provider, so the
+    container's managed identity (or a developer's ``az login``) is used and no key is stored.
+    The API key path is used only when ``AZURE_OPENAI_API_KEY`` is set.
+    """
+    env = dict(os.environ) if env is None else env
+    if env.get("AZURE_OPENAI_API_KEY"):
+        return {"api_key": env["AZURE_OPENAI_API_KEY"]}
+    try:
+        from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+    except ImportError as exc:  # pragma: no cover - depends on installed extras
+        raise RuntimeError(
+            "azure-identity is not installed. Run: uv sync --extra openai "
+            "(or set AZURE_OPENAI_API_KEY)"
+        ) from exc
+    provider = get_bearer_token_provider(DefaultAzureCredential(), AZURE_SCOPE)
+    return {"azure_ad_token_provider": provider}
 
 
 def _default_responder(messages: Sequence[BaseMessage]) -> str:
@@ -109,10 +133,10 @@ def get_llm(
     if provider == "azure":
         return AzureChatOpenAI(
             azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-            api_key=os.environ["AZURE_OPENAI_API_KEY"],
             azure_deployment=os.environ["AZURE_OPENAI_DEPLOYMENT"],
             api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
             temperature=temperature,
+            **azure_auth_kwargs(),
         )
     return ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"), temperature=temperature)
 
@@ -124,10 +148,10 @@ def _fallback_model(provider: Provider, temperature: float) -> BaseChatModel | N
         return AzureChatOpenAI(
             azure_endpoint=os.getenv("AZURE_OPENAI_FALLBACK_ENDPOINT")
             or os.environ["AZURE_OPENAI_ENDPOINT"],
-            api_key=os.environ["AZURE_OPENAI_API_KEY"],
             azure_deployment=os.environ["AZURE_OPENAI_FALLBACK_DEPLOYMENT"],
             api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
             temperature=temperature,
+            **azure_auth_kwargs(),
         )
     if provider == "openai" and os.getenv("OPENAI_FALLBACK_MODEL"):
         from langchain_openai import ChatOpenAI
