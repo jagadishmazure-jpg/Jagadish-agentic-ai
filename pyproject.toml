@@ -53,5 +53,9 @@ extend-exclude = [".venv"]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 ignore = ["RUF001"]
 
+[tool.ruff.lint.per-file-ignores]
+# Doc tooling holds long table cells and demo strings verbatim.
+"scripts/*" = ["E501"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["shared", "refund_agent", "supply_chain", "policy_qa", "ticket_triage", "meeting_prep", "invoice_match", "incident_agent", "rfp_agent", "contract_review", "collections_agent", "care_e2e", "control_plane", "fnol", "prior_auth", "credit_memo", "outage_care", "tech_copilot", "exception_agent", "finetune_lab", "memory_agent", "orchestration_lab"]
