@@ -6,7 +6,7 @@
 - **Eight multi-agent orchestration patterns compared side by side** on the same mortgage underwriting task, measured on answer quality, cost (LLM calls and tokens) and behaviour under injected failures.
 - **Built-in safety and governance:** human approval before risky actions, prompt-injection guardrails, access-controlled retrieval (RAG), and long-term customer memory that can forget on request (right to be forgotten).
 - **Quality is measured, not assumed:** eval gates in CI block a release if scores regress, and a fine-tuning study on synthetic mortgage document classification lifts test accuracy from 0.64 to 0.97 while using about 90% fewer input tokens per call (run offline).
-- **500 automated tests** run on every push in GitHub Actions, alongside lint and eval gates.
+- **543 automated tests** run on every push in GitHub Actions, alongside lint and eval gates.
 - **Packaged as a small service:** a FastAPI catalog/eval API ([`shared/api`](shared/api/README.md)) in one container image, with Terraform and Bicep for Azure Container Apps ([`infra/`](infra/README.md)) and a GitHub Actions pipeline with OIDC login and dev -> prod approval gates. The pipeline is switched off until a subscription exists ([docs/deployment.md](docs/deployment.md)).
 
 **Skills demonstrated:** Python, LangGraph, LangChain, RAG, MCP, A2A, LLM evaluation, fine-tuning, OpenTelemetry, FastAPI, Docker, Terraform, Bicep, Azure Container Apps, CI/CD (GitHub Actions, OIDC).
@@ -15,11 +15,11 @@
 
 **Contents:** [What](#at-a-glance-for-recruiters) · [Why](#why-it-exists) · [Architecture](#architecture-four-planes-and-the-shared-platform) · [Run](#setup) · [Test](#run-tests-and-lint) · [Deploy](#deploy) · [Limits](#limits) · [Docs](#documentation)
 
-Twenty-one production-style business agents built with **LangGraph** and **LangChain**, put together
-by Jagadish Meduri over a 12-week prep for Staff-level agentic AI engineering interviews.
+Twenty-one production-style business agents built with **LangGraph** and **LangChain** by
+Jagadish Meduri, as a portfolio of how governed agents are designed, tested and operated.
 Each project picks one real business workflow and one graph pattern (routing, human-in-the-loop,
 map-reduce, supervisor, and so on); project 21 puts eight multi-agent orchestration patterns side by side on one task and measures them. Each one comes with typed state, mock enterprise services,
-tests, and a README covering design trade-offs and interview talking points.
+tests, and a README in the same 17 sections (purpose to "Adopt this") with real pasted output.
 
 Every project is also held to an **agentic-systems doctrine**: an agent only counts as more
 than a demo when it names its plane dependencies, its systems of record, its retrieval corpus
@@ -34,7 +34,7 @@ generated `DOCTRINE.md`; CI blocks promotion if any of it is missing or the eval
 
 ## Why it exists
 
-Most agent demos show the happy path. Interviewers and clients ask about the rest: what happens when the model or a system of record is down, who approved a risky action, which documents a user was allowed to see, and how a regression gets caught before release. Each project answers those questions for one real workflow, with the same shared controls, so the patterns can be compared rather than re-invented.
+Most agent demos show the happy path. Reviewers, architects and clients ask about the rest: what happens when the model or a system of record is down, who approved a risky action, which documents a user was allowed to see, and how a regression gets caught before release. Each project answers those questions for one real workflow, with the same shared controls, so the patterns can be compared rather than re-invented.
 
 ## Projects
 
@@ -165,7 +165,8 @@ evals/              # `python -m evals` runner for all projects
 projects/NN-name/   # README, package, tests, run.py, doctrine.yaml, DOCTRINE.md, evals/
 .github/workflows/  # CI: ruff + pytest + eval gate + doctrine gate (offline); infra checks; gated deploy
 infra/              # Terraform (primary) and Bicep for Azure Container Apps
-docs/               # deployment.md, best-practices.md, adr/ (architecture decisions)
+docs/               # implementation-guide, adopt-this, components/, deployment, best-practices, adr/
+scripts/            # render_docs.py (doc drift check), doc_tables.py, component_demos.py
 Dockerfile          # API image (uv, non-root)
 ```
 
@@ -179,7 +180,7 @@ Every folder has its own README with a file-by-file table. Good starting points:
 | [`evals/`](evals/README.md) | The `python -m evals` runner and its flags |
 | [`.github/workflows/`](.github/workflows/README.md) | What CI runs and how to reproduce it locally |
 | [`infra/`](infra/README.md) | Terraform and Bicep for hosting the API; [`docs/deployment.md`](docs/deployment.md) covers the pipeline |
-| `projects/NN-name/` | Each project README ends with a **Project structure** table linking its package, `tests/` and `evals/` READMEs, e.g. [`03-refund-agent`](projects/03-refund-agent/README.md#project-structure) |
+| `projects/NN-name/` | Each project README has a **Key files** section (4) linking its package, `tests/` and `evals/` READMEs, e.g. [`03-refund-agent`](projects/03-refund-agent/README.md#4-key-files) |
 
 ## Setup
 
@@ -204,6 +205,7 @@ ruff check . && ruff format --check .
 pytest                          # all projects, offline, mock LLM (incl. chaos tests)
 python -m evals                 # golden sets for every project; non-zero exit on regression
 python -m shared.doctrine validate   # promotion gate: cards complete, five-exit coverage, scores
+python scripts/render_docs.py --check  # pasted output and code excerpts in every doc are current
 ```
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` (with the `otlp` extra installed) to ship traces to a
@@ -269,6 +271,9 @@ uvicorn shared.api.app:create_app --factory --port 8000   # run the API locally
 
 | Document | What it covers |
 |---|---|
+| [`docs/implementation-guide.md`](docs/implementation-guide.md) | How the portfolio is built, step by step, with the commands that prove each step |
+| [`docs/adopt-this.md`](docs/adopt-this.md) | How another team reuses, configures and extends a project or the shared platform |
+| [`docs/components/`](docs/components/README.md) | One full doc per shared component (model factory, context builder, tool gateway, MCP servers, A2A, API, resilience, observability, evals, doctrine gate, infrastructure) |
 | [`docs/best-practices.md`](docs/best-practices.md) | Enterprise cloud and agentic AI practices, each marked implemented, written-not-deployed or planned, with links to the code |
 | [`docs/adr/`](docs/adr/README.md) | Architecture decision records (Bicep + Terraform, offline mocks, OIDC, eval gates, gated deploy, ...) |
 | [`docs/deployment.md`](docs/deployment.md) | The GitHub Actions pipeline and the one-time Azure setup it needs |
