@@ -157,7 +157,14 @@ def main(argv: list[str]) -> int:
         if new != text:
             stale.append(p.relative_to(ROOT))
             if check:  # show what drifted, so a CI failure is diagnosable from the log
-                diff = difflib.unified_diff(text.splitlines(), new.splitlines(), str(p.relative_to(ROOT)), "rendered", lineterm="", n=1)
+                diff = difflib.unified_diff(
+                    text.splitlines(),
+                    new.splitlines(),
+                    str(p.relative_to(ROOT)),
+                    "rendered",
+                    lineterm="",
+                    n=1,
+                )
                 print("\n".join(list(diff)[:60]))
             if not check:
                 p.write_text(new)
