@@ -50,8 +50,11 @@ def test_full_doc_has_every_section_in_order(doc):
 
 
 def test_every_folder_has_a_readme():
-    missing = [str(d.relative_to(ROOT)) for d in tracked_dirs() if not (d / "README.md").exists()]
+    dirs = [d for d in tracked_dirs() if d != ROOT / ".github"]
+    missing = [str(d.relative_to(ROOT)) for d in dirs if not (d / "README.md").exists()]
     assert not missing
+    # .github/README.md must not exist: GitHub would show it instead of the root README on the repo page.
+    assert not (ROOT / ".github/README.md").exists()
 
 
 def test_guides_and_ownership():
