@@ -38,3 +38,18 @@ jobs:
         env:
           LLM_PROVIDER: mock
         run: uv run python -m shared.doctrine validate
+
+  docs:
+    # Pasted command output and code excerpts in every Markdown file must match the code.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Install dependencies (locked)
+        run: uv sync --locked --all-extras --group dev
+      - name: Doc drift check (scripts/render_docs.py --check)
+        env:
+          LLM_PROVIDER: mock
+        run: uv run python scripts/render_docs.py --check
