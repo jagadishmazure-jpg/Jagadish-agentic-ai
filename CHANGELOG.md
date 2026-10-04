@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). There are no versioned releases, so entries are grouped by date.
+Notable changes, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). There are no versioned releases, so entries are grouped by milestone, newest first.
 
 ## Unreleased
 
@@ -14,7 +14,7 @@ Notable changes, newest first. The format follows [Keep a Changelog](https://kee
 
 - README sections follow one order: what, why, architecture, run, test, deploy, limits.
 
-## 2026-09-29
+## Milestone 2
 
 ### Added
 
@@ -23,7 +23,7 @@ Notable changes, newest first. The format follows [Keep a Changelog](https://kee
 - Project 21: eight multi-agent orchestration patterns on one underwriting task, with a test-enforced comparison.
 - Recruiter summary in the README.
 
-## 2026-09-25
+## Milestone 1
 
 ### Added
 

@@ -1,7 +1,6 @@
 # ADR 0006: Doctrine cards are a promotion gate
 
 - **Status:** Accepted
-- **Date:** 2026-09-29
 
 ## Context
 

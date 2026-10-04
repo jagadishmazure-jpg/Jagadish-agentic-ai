@@ -1,7 +1,6 @@
 # ADR 0005: Ship the deploy pipeline switched off
 
 - **Status:** Accepted
-- **Date:** 2026-09-29
 
 ## Context
 

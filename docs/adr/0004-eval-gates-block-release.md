@@ -1,7 +1,6 @@
 # ADR 0004: Eval gates block the build
 
 - **Status:** Accepted
-- **Date:** 2026-09-29
 
 ## Context
 

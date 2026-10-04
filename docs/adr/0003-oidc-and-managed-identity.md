@@ -1,7 +1,6 @@
 # ADR 0003: Use OIDC federation for CI and managed identities at runtime
 
 - **Status:** Accepted (not yet exercised)
-- **Date:** 2026-09-29
 
 ## Context
 

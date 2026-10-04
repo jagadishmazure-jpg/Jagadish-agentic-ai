@@ -1,7 +1,6 @@
 # ADR 0001: Keep Bicep and add a Terraform twin
 
 - **Status:** Accepted
-- **Date:** 2026-09-29
 
 ## Context
 

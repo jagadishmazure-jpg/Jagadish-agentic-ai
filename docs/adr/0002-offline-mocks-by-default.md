@@ -1,7 +1,6 @@
 # ADR 0002: Run offline against deterministic mocks by default
 
 - **Status:** Accepted
-- **Date:** 2026-09-29
 
 ## Context
 
