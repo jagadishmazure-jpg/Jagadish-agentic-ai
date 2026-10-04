@@ -31,6 +31,7 @@ some text (``path::name|StateGraph(``), a line range (``path:10-30``) or a whole
 from __future__ import annotations
 
 import ast
+import difflib
 import os
 import re
 import subprocess
@@ -155,6 +156,9 @@ def main(argv: list[str]) -> int:
         new = render(text)
         if new != text:
             stale.append(p.relative_to(ROOT))
+            if check:  # show what drifted, so a CI failure is diagnosable from the log
+                diff = difflib.unified_diff(text.splitlines(), new.splitlines(), str(p.relative_to(ROOT)), "rendered", lineterm="", n=1)
+                print("\n".join(list(diff)[:60]))
             if not check:
                 p.write_text(new)
     verb = "stale" if check else "updated"
