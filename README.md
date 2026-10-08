@@ -6,7 +6,7 @@
 - **Eight multi-agent orchestration patterns compared side by side** on the same mortgage underwriting task, measured on answer quality, cost (LLM calls and tokens) and behaviour under injected failures.
 - **Built-in safety and governance:** human approval before risky actions, prompt-injection guardrails, access-controlled retrieval (RAG), and long-term customer memory that can forget on request (right to be forgotten).
 - **Quality is measured, not assumed:** eval gates in CI block a release if scores regress, and a fine-tuning study on synthetic mortgage document classification lifts test accuracy from 0.64 to 0.97 while using about 90% fewer input tokens per call (run offline).
-- **547 automated tests** run on every push in GitHub Actions, alongside lint and eval gates.
+- **552 automated tests** run on every push in GitHub Actions, alongside lint and eval gates.
 - **Packaged as a small service:** a FastAPI catalog/eval API ([`shared/api`](shared/api/README.md)) in one container image, with Terraform and Bicep for Azure Container Apps ([`infra/`](infra/README.md)) and a GitHub Actions pipeline with OIDC login and dev -> prod approval gates. The pipeline is switched off until a subscription exists ([docs/deployment.md](docs/deployment.md)).
 
 **Skills demonstrated:** Python, LangGraph, LangChain, RAG, MCP, A2A, LLM evaluation, fine-tuning, OpenTelemetry, FastAPI, Docker, Terraform, Bicep, Azure Container Apps, CI/CD (GitHub Actions, OIDC).

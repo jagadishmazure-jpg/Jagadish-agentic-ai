@@ -1,6 +1,6 @@
 # `shared/tests/`: tests for the shared platform
 
-Offline tests for the shared packages (63 tests at the time of writing). They
+Offline tests for the shared packages (112 tests at the time of writing). They
 use the deterministic mock LLM and in-process MCP/A2A transports; `test_mcp_http.py` also
 starts a FastMCP server over streamable HTTP in a local uvicorn thread. Repo-wide fixtures
 (fault isolation, `kill_model`, `kill_retrieval`, `kill_sor`, `jailbreak`) come from the root
@@ -10,6 +10,7 @@ starts a FastMCP server over streamable HTTP in a local uvicorn thread. Repo-wid
 |---|---|
 | [`test_a2a.py`](test_a2a.py) | Agent card round trip with tenant and trace propagation, schema rejection and guard refusal, typed error for an unavailable peer (3). |
 | [`test_api.py`](test_api.py) | Portfolio API: health and readiness, project catalog, project detail and 404, eval rerun forced to the mock model (5). |
+| [`test_content_safety.py`](test_content_safety.py) | Prompt Shields adapter: off by default, keyless batched request shape, fail closed on service errors, builder withholds flagged chunks after the regex screen, payload leaves shielded (5). |
 | [`test_context.py`](test_context.py) | Parent/child chunk ids, RRF fusion, ACL and temporal filtering, sanitiser, budget packer and source map, typed empty/unavailable errors, cache scoping and invalidation, citation coverage (9). |
 | [`test_doctrine_and_evals.py`](test_doctrine_and_evals.py) | Promotion gate over every project card, rejection of incomplete cards, harness metrics and thresholds, one card per project folder, README compliance matrix freshness (22). |
 | [`test_llm.py`](test_llm.py) | Provider resolution order, deterministic mock responder, mock support for tool-calling agents (6). |

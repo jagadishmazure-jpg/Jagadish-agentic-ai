@@ -20,6 +20,8 @@ from langchain_core.tools import BaseTool, StructuredTool
 from opentelemetry import trace
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from shared.context import content_safety
+from shared.context.content_safety import SHIELDED
 from shared.context.sanitize import sanitize
 from shared.observability import telemetry
 from shared.resilience import Backoff, CircuitBreaker, CircuitOpenError, retry_call
@@ -240,6 +242,8 @@ class ToolGateway:
                 ) from exc
         if self.sanitize_payloads:
             data, rec.injections = _clean(data)
+            data, shielded = content_safety.shield_payload(data, SHIELDED)
+            rec.injections += shielded
         return data
 
     # ------------------------------------------------------------------ LangChain tools

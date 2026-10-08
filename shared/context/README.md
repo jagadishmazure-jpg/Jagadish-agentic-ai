@@ -17,6 +17,7 @@ with a source map for citations. Everything runs locally: no network, no model d
 | [`documents.py`](documents.py) | `Principal`, `Document`, `Chunk`, `KnowledgeCorpus` and `chunk_document`, which splits on markdown headings into parent/child ids (`DOC::1`, `DOC::1.2`) carrying ACL and temporal metadata. |
 | [`packer.py`](packer.py) | `Budget`, `Evidence`, `PackedContext` and `pack`: a greedy, order-preserving fill of explicit token allocations (policy / facts / history / tool I/O); overflow is dropped and recorded. |
 | [`retrieval.py`](retrieval.py) | `BM25`, `HashingEmbedder` (deterministic offline embedder behind the `Embedder` protocol), `VectorIndex`, `rrf` and `HybridRetriever`. Swap the embedder for a hosted embedding deployment without touching callers. |
+| [`content_safety.py`](content_safety.py) | Opt-in Azure AI Content Safety Prompt Shields screen (`PROMPT_SHIELDS=1` plus `AZURE_CONTENT_SAFETY_ENDPOINT`), keyless, batched five documents per request and fail closed. Off by default: offline, only `sanitize.py` runs. Used by `builder.py` and the tool gateway. |
 | [`sanitize.py`](sanitize.py) | `sanitize` and `looks_like_injection`: neutralise instruction-like spans and redact secrets and PII in untrusted text (retrieved chunks, tickets, tool observations). |
 
 ## Usage sketch

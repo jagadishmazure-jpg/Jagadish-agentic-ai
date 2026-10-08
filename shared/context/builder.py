@@ -9,11 +9,13 @@ calling graph node can take its *degrade* exit instead of letting the model impr
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 from shared import faults
+from shared.context import content_safety
 from shared.context.cache import SemanticCache
+from shared.context.content_safety import SHIELDED
 from shared.context.documents import Chunk, KnowledgeCorpus, Principal
 from shared.context.packer import Budget, Evidence, PackedContext, pack
 from shared.context.retrieval import Embedder, Hit, HybridRetriever
@@ -169,6 +171,15 @@ class ContextBuilder:
                     s = sanitize(text, redact_pii=self.redact_pii)
                     inj, sec, pii = inj + s.injections, sec + s.secrets, pii + s.pii
                     evidence.append(Evidence(sid, s.text, section))
+            flags = content_safety.shield([e.text for e in evidence])
+            sp.set_attribute("content_safety.prompt_shields", flags is not None)
+            if flags:
+                evidence = [
+                    replace(e, text=SHIELDED) if hit else e
+                    for e, hit in zip(evidence, flags, strict=True)
+                ]
+                inj += sum(flags)
+                sp.set_attribute("content_safety.flagged", sum(flags))
             packed = pack(evidence, self.budget)
             sp.set_attribute("retrieval.injections_neutralised", inj)
             sp.set_attribute("context.tokens", packed.total_tokens)

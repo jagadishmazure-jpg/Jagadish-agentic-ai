@@ -53,7 +53,7 @@ the portfolio API and the care BFF.
 
 | Risk | How it applies here | Control | Status |
 |---|---|---|---|
-| LLM01 Prompt injection | Indirect: instructions inside retrieved policies, contracts, tickets and MCP output | Sanitiser before the prompt; untrusted MCP payloads sanitised at the gateway (`test_untrusted_payload_is_sanitised`); refunds route fraud keywords to review before money moves | Built (regex). Azure AI Content Safety Prompt Shields: see the Content Safety section of [`SECURITY.md`](../../SECURITY.md) |
+| LLM01 Prompt injection | Indirect: instructions inside retrieved policies, contracts, tickets and MCP output | Sanitiser before the prompt; untrusted MCP payloads sanitised at the gateway (`test_untrusted_payload_is_sanitised`); refunds route fraud keywords to review before money moves | Built (regex, the only path offline). Prompt Shields adapter (`shared/context/content_safety.py`, flag `PROMPT_SHIELDS=1`) written and tested with a fake transport, not run against Azure |
 | LLM02 Sensitive information disclosure | Customer identifiers and secrets in context; memories holding credentials | Sanitiser redacts secrets and PII; memory policy never stores credentials or full identifiers (`test_credentials_and_full_identifiers_are_never_stored`); reply guard (`test_reply_guard_falls_back_when_llm_leaks_internals`) | Built |
 | LLM03 Supply chain | Compromised package, action or base image | `uv.lock`, SHA-pinned actions, Dependabot, CodeQL, gitleaks, SBOM, digest-pinned base images, Trivy gate, build provenance | Built |
 | LLM04 Data and model poisoning | Poisoned fine-tuning data (project 19); poisoned long-term memory | Fine-tuning set is synthetic and generated in code; instruction-like memories are rejected and flagged (`test_instruction_like_memories_are_rejected_and_flagged`); inferred values cannot override user-stated ones | Built |
@@ -80,8 +80,8 @@ the portfolio API and the care BFF.
 
 ## Residual risks
 
-* Regex screens miss novel phrasings; the Content Safety path closes part of that gap only when it is
-  configured against a real Azure resource, which has not been done.
+* Regex screens miss novel phrasings; the Prompt Shields path closes part of that gap only when it is
+  switched on against a real Azure resource, which has not been done.
 * The portfolio API has no authentication of its own; it must sit behind ingress auth before any
   public deployment.
 * Every agent runs against a deterministic mock model; real-model behaviour under attack is untested.

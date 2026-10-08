@@ -39,6 +39,7 @@ flowchart LR
 | `shared/context/documents.py` | `Document`, heading-aware chunking, ACL and temporal metadata |
 | `shared/context/retrieval.py` | BM25, `HashingEmbedder`, `rrf`, rerank |
 | `shared/context/sanitize.py` | injection, secret and PII neutralisation |
+| `shared/context/content_safety.py` | opt-in Azure AI Content Safety Prompt Shields screen after the sanitizer (off by default) |
 | `shared/context/packer.py` | `Budget`, `pack`, source map |
 | `shared/context/cache.py` | `SemanticCache` scoped by ACL and as-of |
 | `shared/context/citations.py` | `citation_coverage` |
@@ -98,6 +99,15 @@ def build(
                 s = sanitize(text, redact_pii=self.redact_pii)
                 inj, sec, pii = inj + s.injections, sec + s.secrets, pii + s.pii
                 evidence.append(Evidence(sid, s.text, section))
+        flags = content_safety.shield([e.text for e in evidence])
+        sp.set_attribute("content_safety.prompt_shields", flags is not None)
+        if flags:
+            evidence = [
+                replace(e, text=SHIELDED) if hit else e
+                for e, hit in zip(evidence, flags, strict=True)
+            ]
+            inj += sum(flags)
+            sp.set_attribute("content_safety.flagged", sum(flags))
         packed = pack(evidence, self.budget)
         sp.set_attribute("retrieval.injections_neutralised", inj)
         sp.set_attribute("context.tokens", packed.total_tokens)
@@ -130,6 +140,7 @@ def build(
 | `valid_from` / `valid_to` | corpus | edition in force on `as_of` |
 | `Embedder` protocol | `retrieval.py` | swap the hashing embedder for an Azure OpenAI embedding deployment |
 | fault `retrieval` / `retrieval:<corpus>` | `CHAOS_FAULTS` | simulate an outage |
+| `PROMPT_SHIELDS=1` + `AZURE_CONTENT_SAFETY_ENDPOINT` | environment | also send sanitised evidence to Prompt Shields; flagged chunks are withheld (default: off, regex sanitizer only) |
 
 ## 7. Commands
 
@@ -172,6 +183,7 @@ Projects measure retrieval through their `groundedness` metric in the eval gate 
 
 - Filtering happens before ranking, so an unauthorised chunk can never be ranked into the prompt.
 - Retrieved text is untrusted: injected instructions are neutralised and counted.
+- **Which screen runs offline:** only the regex sanitizer. Prompt Shields runs only when `PROMPT_SHIELDS=1` and `AZURE_CONTENT_SAFETY_ENDPOINT` are set; then it screens what the sanitizer let through, keyless through `DefaultAzureCredential`, and withholds anything it flags. If the service fails, the batch is withheld (fail closed). Tests use a fake transport; no test or CI run calls Azure.
 - No evidence raises `EmptyRetrievalError`; nodes then answer "insufficient evidence" or escalate rather than improvise.
 
 ## 11. Security and governance
@@ -191,6 +203,7 @@ The bundle reports `dropped_acl`, `dropped_temporal`, `injections`, `secrets` an
 | retrieval backend down | `RetrievalUnavailableError` -> degrade (cached policy citations, auto-actions disabled) |
 | nothing relevant or allowed | `EmptyRetrievalError` -> insufficient-evidence answer or escalate |
 | poisoned document | sanitised, counted; text never reaches the model |
+| Prompt Shields unreachable (flag on) | batch withheld and counted as flagged; fewer chunks, never unscreened text |
 | budget too small | lowest-ranked evidence dropped and listed in `dropped` |
 
 ## 14. Mapping to Azure services
@@ -201,14 +214,14 @@ The bundle reports `dropped_acl`, `dropped_temporal`, `injections`, `secrets` an
 | ACL | security-trimming filters on group and tenant fields |
 | temporal validity | filterable `valid_from` / `valid_to` fields |
 | embeddings | Azure OpenAI embedding deployment |
-| sanitising | Azure AI Content Safety prompt shields, plus this sanitizer |
+| sanitising | this sanitizer, then Azure AI Content Safety Prompt Shields (`content_safety.py`, opt-in; written and unit-tested with a fake transport, not run against Azure) |
 | labels | Microsoft Purview sensitivity labels on source documents |
 
 ## 15. Limitations
 
 - The embedder is a hashing stand-in; ranking quality on real text is untested.
 - Corpora are small and in memory.
-- The sanitizer is pattern-based and will miss novel injections; Content Safety would sit in front of it in Azure.
+- The sanitizer is pattern-based and will miss novel injections. The Prompt Shields adapter closes part of that gap but has not been run against a real Content Safety resource.
 
 ## 16. Interview talking points
 
