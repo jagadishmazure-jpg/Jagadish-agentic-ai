@@ -27,6 +27,7 @@ class A2ARejection(Exception):
 
     def __init__(self, reason: str, code: int = REJECTED):
         super().__init__(reason)
+        self.reason = reason  # written for the caller; never an exception message from elsewhere
         self.code = code
 
 
@@ -113,8 +114,8 @@ def a2a_app(card: AgentCard, skills: dict[str, Skill], guard: Guard | None = Non
                         INVALID_PARAMS,
                     ) from exc
             except A2ARejection as rej:
-                span.set_attribute("a2a.rejected", str(rej))
-                return _err(rid, rej.code, str(rej))
+                span.set_attribute("a2a.rejected", rej.reason)
+                return _err(rid, rej.code, rej.reason)
             try:
                 out = skill.handler(inp, ctx)
                 status = TaskStatus(state="completed")
