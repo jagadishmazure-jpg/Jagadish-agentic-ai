@@ -9,12 +9,17 @@ when ``CI`` or ``PYTEST_CURRENT_TEST`` is set.
     python projects/19-finetune-vs-prompting/run.py azure --execute            # upload + train
     python projects/19-finetune-vs-prompting/run.py azure --execute --deploy   # + deploy
 
+Authentication is Microsoft Entra ID only, with no keys: ``DefaultAzureCredential`` (a managed
+identity in Azure, ``az login`` or a workload identity elsewhere) is wrapped in a bearer-token
+provider for the data plane and asked for an ARM token for ``--deploy``. Local (key) auth is
+disabled on the Foundry resource in ``infra/``, so an API key would not work anyway.
+
 Environment for ``--execute``:
     AZURE_OPENAI_ENDPOINT   https://<resource>.openai.azure.com
-    AZURE_OPENAI_API_KEY    data-plane key (or swap in Entra ID auth)
-and additionally for ``--deploy`` (control plane, separate auth):
-    AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, AZURE_OPENAI_RESOURCE,
-    AZURE_MANAGEMENT_TOKEN  (e.g. from ``az account get-access-token``)
+    identity needs the "Cognitive Services OpenAI Contributor" role on the resource
+and additionally for ``--deploy`` (control plane):
+    AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, AZURE_OPENAI_RESOURCE
+    identity needs "Cognitive Services Contributor" (deployments/write) on the resource
 
 API shapes follow Microsoft Learn, "Customize a model with fine-tuning" (checked
 2026-09-25): https://learn.microsoft.com/azure/ai-foundry/openai/how-to/fine-tuning
@@ -62,13 +67,12 @@ SFT_MODELS = (
 TRAINING_TYPES = ("Standard", "GlobalStandard", "Developer")
 MAX_FILE_BYTES = 512 * 1024 * 1024
 MIN_TRAIN = 10
-DATA_ENV = ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY")
-DEPLOY_ENV = (
-    "AZURE_SUBSCRIPTION_ID",
-    "AZURE_RESOURCE_GROUP",
-    "AZURE_OPENAI_RESOURCE",
-    "AZURE_MANAGEMENT_TOKEN",
-)
+DATA_ENV = ("AZURE_OPENAI_ENDPOINT",)
+DEPLOY_ENV = ("AZURE_SUBSCRIPTION_ID", "AZURE_RESOURCE_GROUP", "AZURE_OPENAI_RESOURCE")
+DATA_SCOPE = "https://cognitiveservices.azure.com/.default"
+MGMT_SCOPE = "https://management.azure.com/.default"
+DATA_ROLE = "Cognitive Services OpenAI Contributor"
+DEPLOY_ROLE = "Cognitive Services Contributor"
 MGMT_API_VERSION = "2024-10-01"
 TERMINAL = {"succeeded", "failed", "cancelled"}
 DATA = Path(__file__).resolve().parents[1] / "data"
@@ -141,9 +145,16 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
                 "body": deploy_body("<fine_tuned_model>", args.deploy_sku),
             }
         )
+    auth = {
+        "method": "Microsoft Entra ID (DefaultAzureCredential); no API key",
+        "data_plane": {"scope": DATA_SCOPE, "role": DATA_ROLE},
+    }
+    if args.deploy:
+        auth["control_plane"] = {"scope": MGMT_SCOPE, "role": DEPLOY_ROLE}
     return {
         "files": files,
         "job": job,
+        "auth": auth,
         "steps": steps,
         "billing_note": f"training is billed per token and a deployed model bills hourly "
         f"hosting; no estimate is made here, see {PRICING_URL}",
@@ -165,16 +176,42 @@ def require_env(names: tuple[str, ...]) -> dict[str, str]:
     return {n: os.environ[n] for n in names}
 
 
+def credential() -> Any:
+    """``DefaultAzureCredential``: managed identity in Azure, ``az login`` on a laptop."""
+    try:
+        from azure.identity import DefaultAzureCredential
+    except ImportError as exc:  # pragma: no cover - depends on installed extras
+        raise SystemExit("azure-identity is not installed. Run: uv sync --extra openai") from exc
+    return DefaultAzureCredential()
+
+
+def token_provider(cred: Any) -> Any:
+    """A callable that returns a fresh data-plane bearer token on every request."""
+    from azure.identity import get_bearer_token_provider
+
+    return get_bearer_token_provider(cred, DATA_SCOPE)
+
+
+def data_client(endpoint: str, cred: Any) -> Any:
+    """OpenAI client on the v1 endpoint, authenticated with an Entra token provider."""
+    from openai import OpenAI  # optional extra: uv sync --extra openai
+
+    return OpenAI(api_key=token_provider(cred), base_url=f"{endpoint.rstrip('/')}/openai/v1/")
+
+
+def management_token(cred: Any) -> str:
+    """An ARM bearer token for the deployment call."""
+    return cred.get_token(MGMT_SCOPE).token
+
+
 def execute(args: argparse.Namespace, the_plan: dict[str, Any]) -> dict[str, Any]:
     if os.getenv("CI") or os.getenv("PYTEST_CURRENT_TEST"):
         raise SystemExit("refusing to call Azure from CI or tests")
     env = require_env(DATA_ENV + (DEPLOY_ENV if args.deploy else ()))
-    from openai import OpenAI  # optional extra: uv sync --extra openai
-
-    client = OpenAI(
-        api_key=env["AZURE_OPENAI_API_KEY"],
-        base_url=f"{env['AZURE_OPENAI_ENDPOINT'].rstrip('/')}/openai/v1/",
-    )
+    if os.getenv("AZURE_OPENAI_API_KEY"):
+        print("note: AZURE_OPENAI_API_KEY is ignored; this script uses Microsoft Entra ID only")
+    cred = credential()
+    client = data_client(env["AZURE_OPENAI_ENDPOINT"], cred)
     with tempfile.TemporaryDirectory() as tmp:
         ids = {}
         for role, path in (("training", args.train), ("validation", args.val)):
@@ -200,11 +237,13 @@ def execute(args: argparse.Namespace, the_plan: dict[str, Any]) -> dict[str, Any
         return out
     out["fine_tuned_model"] = job.fine_tuned_model
     if args.deploy:
-        out["deployment"] = deploy(env, args.deployment_name, job.fine_tuned_model, args)
+        out["deployment"] = deploy(
+            env, args.deployment_name, job.fine_tuned_model, args, management_token(cred)
+        )
     return out
 
 
-def deploy(env: dict[str, str], name: str, model: str, args: argparse.Namespace) -> Any:
+def deploy(env: dict[str, str], name: str, model: str, args: argparse.Namespace, token: str) -> Any:
     import urllib.request
 
     url = (
@@ -218,7 +257,7 @@ def deploy(env: dict[str, str], name: str, model: str, args: argparse.Namespace)
         data=json.dumps(deploy_body(model, args.deploy_sku)).encode(),
         method="PUT",
         headers={
-            "Authorization": f"Bearer {env['AZURE_MANAGEMENT_TOKEN']}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         },
     )

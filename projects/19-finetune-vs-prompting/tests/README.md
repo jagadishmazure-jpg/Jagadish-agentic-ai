@@ -8,7 +8,7 @@ from the repo-root [`conftest.py`](../../../conftest.py).
 | File | What it does |
 |---|---|
 | [`conftest.py`](conftest.py) | Forces `LLM_PROVIDER=mock` for every test in the folder. |
-| [`test_azure_script.py`](test_azure_script.py) | Dry run plans every request without network, `--execute` requires the env vars and refuses under CI or pytest, a model not supported for supervised fine-tuning and an invalid suffix are rejected before anything is sent, upload copies are UTF-8 with BOM. (6) |
+| [`test_azure_script.py`](test_azure_script.py) | Dry run plans every request without network, `--execute` requires the env vars and refuses under CI or pytest, a model not supported for supervised fine-tuning and an invalid suffix are rejected before anything is sent, upload copies are UTF-8 with BOM, the plan documents keyless auth and roles, the data client gets an Entra token provider (never a key), and the deploy token comes from the credential for the ARM scope. (9) |
 | [`test_chaos.py`](test_chaos.py) | Doctrine-driven chaos tests. (4) |
 | [`test_dataset.py`](test_dataset.py) | No planted PII value survives in any split, OCR-garbled anchors are scrubbed while document cues are kept, duplicates removed before splitting, rescans share a fingerprint, conflicting labels drop every copy, splits share no loan, fingerprint or near duplicate, the leak detector flags a near duplicate, the build refuses to write when leakage remains, files are valid chat format, bad rows rejected, committed data reproducible from the seed. (11) |
 | [`test_graph.py`](test_graph.py) | Champion files a confident page, low confidence goes to a processor, PII scrubbed before the model and never filed, replay is idempotent in the LOS. (4) |

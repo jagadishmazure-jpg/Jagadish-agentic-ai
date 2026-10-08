@@ -141,14 +141,15 @@ baseline had been within 0.02 macro-F1, it would stay champion: it is simpler to
 - **Serving never trains.** The graph loads the committed champion from `registry/`, verified
   by hash, so the thing in production is exactly the thing that was evaluated.
 - **Azure is optional and loud about it.** The script prints its plan by default; `--execute`
-  needs endpoint and key variables, and deployment also needs ARM variables.
+  needs the endpoint variable and a Microsoft Entra identity (no API key), and deployment also
+  needs the ARM resource variables.
 
 ## 4. Key files
 
 | Path | What it is |
 |---|---|
 | [`finetune_lab/`](finetune_lab/README.md) | The importable package (dataset builder, trainer, baseline, registry, comparison harness, serving graph, Azure script, eval suite, demo CLI), with a file-by-file map. |
-| [`tests/`](tests/README.md) | Pytest suite (35 tests), including chaos tests generated from `doctrine.yaml`. |
+| [`tests/`](tests/README.md) | Pytest suite (38 tests), including chaos tests generated from `doctrine.yaml`. |
 | [`evals/`](evals/README.md) | Golden set (14 cases), `comparison.json` and the latest `scores.json`. |
 | [`data/`](data/README.md) | Generated train/val/test JSONL in chat fine-tuning format, plus `manifest.json`. |
 | [`registry/`](registry/README.md) | Model registry (`registry.json`) and versioned JSON artifacts. |
@@ -340,12 +341,12 @@ Tests collected for this project:
 <!-- output-md: python scripts/doc_tables.py 19 tests -->
 | Test file | Tests |
 |---|---|
-| `test_azure_script.py` | 6 |
+| `test_azure_script.py` | 9 |
 | `test_chaos.py` | 4 |
 | `test_dataset.py` | 11 |
 | `test_graph.py` | 4 |
 | `test_training_and_gate.py` | 10 |
-| **total** | **35** |
+| **total** | **38** |
 <!-- /output -->
 
 Eval gate for this project (`python -m evals --project 19 --no-write`):
@@ -491,12 +492,29 @@ fine-tuning is offered for reasoning models such as `o4-mini`, and some open mod
 fine-tunable only on Foundry resources. Region and training-type availability change, so check
 the page before running. This script was **not** run against Azure for this project.
 
+**Authentication: Microsoft Entra ID, no keys.** `--execute` builds `DefaultAzureCredential`
+(the managed identity when it runs in Azure, `az login` or a workload identity elsewhere). The
+data-plane client gets a bearer-token provider for `https://cognitiveservices.azure.com/.default`
+as its `api_key` callable, so every request carries a fresh token; `--deploy` asks the same
+credential for an ARM token (`https://management.azure.com/.default`). No key or token is read
+from the environment, and `AZURE_OPENAI_API_KEY` is ignored with a note if set. The Foundry
+resource in `infra/` has local (key) auth disabled, so this is the only path that works there.
+
+| Step | Identity needs | Scope |
+|---|---|---|
+| upload files, create and poll the job | `Cognitive Services OpenAI Contributor` | the Azure OpenAI / Foundry resource |
+| `--deploy` (ARM `PUT .../deployments`) | `Cognitive Services Contributor` | the same resource |
+
+The dry run needs none of this and never imports the SDK, so it stays runnable offline; the plan
+it prints includes an `auth` block with the scopes and roles above.
+
 ```bash
 python projects/19-finetune-vs-prompting/run.py azure                  # dry run: prints the plan
-AZURE_OPENAI_ENDPOINT=... AZURE_OPENAI_API_KEY=... \
+az login                                                               # or run as a managed identity
+AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com \
   python projects/19-finetune-vs-prompting/run.py azure --execute      # upload, create, poll
-# add --deploy (plus AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, AZURE_OPENAI_RESOURCE,
-# AZURE_MANAGEMENT_TOKEN) to create a deployment; remember it is billed hourly
+# add --deploy (plus AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, AZURE_OPENAI_RESOURCE)
+# to create a deployment; remember it is billed hourly
 ```
 
 ## 15. Limitations

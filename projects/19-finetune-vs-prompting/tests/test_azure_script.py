@@ -40,7 +40,6 @@ def test_execute_requires_env_vars(monkeypatch):
 
 def test_execute_refuses_to_run_in_ci_or_tests(monkeypatch):
     monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.invalid")
-    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "not-a-key")
     with pytest.raises(SystemExit, match="refusing"):
         az.execute(az.parser().parse_args(["--execute"]), {})
 
@@ -60,3 +59,43 @@ def test_upload_copy_is_utf8_with_bom(tmp_path):
     out_dir = tmp_path / "out"
     out_dir.mkdir()
     assert az.with_bom(src, out_dir).read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+class _FakeCredential:
+    def __init__(self):
+        self.scopes = []
+
+    def get_token(self, *scopes, **kw):
+        self.scopes.extend(scopes)
+        return type("Token", (), {"token": "fake-arm-token", "expires_on": 0})()
+
+
+def test_plan_documents_keyless_auth_and_roles(no_network):
+    plan = az.plan(az.parser().parse_args(["--deploy"]))
+    assert "no API key" in plan["auth"]["method"]
+    assert plan["auth"]["data_plane"] == {"scope": az.DATA_SCOPE, "role": az.DATA_ROLE}
+    assert plan["auth"]["control_plane"]["scope"] == az.MGMT_SCOPE
+    assert not any("KEY" in n or "TOKEN" in n for n in az.DATA_ENV + az.DEPLOY_ENV)
+
+
+def test_data_client_uses_an_entra_token_provider_not_a_key(monkeypatch):
+    import openai
+
+    seen = {}
+
+    class Recorder:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+    monkeypatch.setattr(openai, "OpenAI", Recorder)
+    cred = _FakeCredential()
+    az.data_client("https://example.invalid/", cred)
+    assert seen["base_url"] == "https://example.invalid/openai/v1/"
+    assert callable(seen["api_key"])  # a token provider, never a static key
+    assert seen["api_key"]() == "fake-arm-token" and cred.scopes == [az.DATA_SCOPE]
+
+
+def test_deploy_token_comes_from_the_credential_for_the_arm_scope():
+    cred = _FakeCredential()
+    assert az.management_token(cred) == "fake-arm-token"
+    assert cred.scopes == [az.MGMT_SCOPE]
