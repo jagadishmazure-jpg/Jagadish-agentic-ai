@@ -7,8 +7,10 @@ import re
 from dataclasses import dataclass
 
 INJECTION_PATTERNS = [
-    r"ignore (?:all |any )?(?:the )?(?:previous|prior|above|earlier|preceding)?\s*"
-    r"(?:instructions|rules|guidance|prompts?)",
+    (
+        r"ignore (?:all |any )?(?:the )?(?:previous|prior|above|earlier|preceding)?\s*"
+        r"(?:instructions|rules|guidance|prompts?)"
+    ),
     r"disregard (?:all |any |the )?(?:previous |prior |above )?(?:instructions|rules|policy)",
     r"forget (?:all |your |the )?(?:previous |prior )?(?:instructions|rules)",
     r"you are now\b",
@@ -17,8 +19,10 @@ INJECTION_PATTERNS = [
     r"\b(?:system|assistant|developer)\s*:",
     r"<\s*/?\s*(?:system|script|instructions?)\b[^>]*>",
     r"\bact as (?:an? )?(?:admin|administrator|developer|system|root)\b",
-    r"\b(?:reveal|print|output|exfiltrate|leak) (?:the |your )?"
-    r"(?:system prompt|instructions|secrets?|api keys?|credentials?)",
+    (
+        r"\b(?:reveal|print|output|exfiltrate|leak) (?:the |your )?"
+        r"(?:system prompt|instructions|secrets?|api keys?|credentials?)"
+    ),
     r"\bdo not (?:tell|inform) the (?:user|customer|reviewer)\b",
     r"\b(?:call|invoke|use) the \w+ tool\b",
     r"\bjailbreak\b|\bDAN mode\b|\bdeveloper mode\b",
@@ -32,8 +36,10 @@ SECRET_PATTERNS = [
     r"\bsk-[A-Za-z0-9_-]{16,}\b",
     r"\bgh[pousr]_[A-Za-z0-9]{20,}\b",
     r"\bbearer\s+[A-Za-z0-9._~+/-]{16,}=*",
-    r"\b(?:api[_-]?key|secret|password|passwd|pwd|token|connection[_ ]?string)\b"
-    r"\s*[:=]\s*\S+",
+    (
+        r"\b(?:api[_-]?key|secret|password|passwd|pwd|token|connection[_ ]?string)\b"
+        r"\s*[:=]\s*\S+"
+    ),
 ]
 _SECRET = re.compile("|".join(f"(?:{p})" for p in SECRET_PATTERNS), re.I)
 PII_PATTERNS = {

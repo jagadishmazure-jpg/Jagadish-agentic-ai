@@ -79,8 +79,9 @@ class McpConnection:
         )
         if not self._h.ready.wait(connect_timeout_s):
             raise TimeoutError(f"MCP server {name} did not start")
-        if self._h.error:
-            raise self._h.error
+        err = self._h.error
+        if err is not None:
+            raise err
         self._finalizer = weakref.finalize(self, self._h.close)
         self._tools: list[types.Tool] | None = None
 
@@ -119,7 +120,10 @@ class McpConnection:
                     h.session = session
                     h.ready.set()
                     await h.closed.wait()
-        except BaseException as exc:  # surface startup failures to the caller
+        except asyncio.CancelledError:  # loop shutting down: unblock the caller, then propagate
+            h.ready.set()
+            raise
+        except Exception as exc:  # surface startup failures to the caller
             h.error = exc
             h.ready.set()
 

@@ -175,8 +175,10 @@ def load_registry(root: Path | None = None) -> ModelRegistry:
 # ------------------------------------------------------------------------------ report
 def render_table(report: dict[str, Any]) -> str:
     rows = [
-        "| Split | Variant | Accuracy | Macro-F1 | Latency p50 / p95 (ms) | Input tokens/call "
-        "| Output tokens/call |",
+        (
+            "| Split | Variant | Accuracy | Macro-F1 | Latency p50 / p95 (ms) | Input tokens/call "
+            "| Output tokens/call |"
+        ),
         "|---|---|---|---|---|---|---|",
     ]
     for split in ("val", "test"):

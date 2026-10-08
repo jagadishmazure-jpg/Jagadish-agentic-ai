@@ -59,7 +59,7 @@ def test_fallback_supplier_when_preferred_quote_unavailable(graph, start, servic
     assert rec["supplier"] == "Stark"  # Umbrella down; Wayne's 30d lead time unacceptable
     hop = next(h for h in result["hops"] if h["agent"] == "supplier_agent")
     assert hop["unavailable"] == ["Umbrella"]
-    result = graph.invoke(APPROVE, cfg)
+    graph.invoke(APPROVE, cfg)
     assert services.erp.submitted[0]["supplier"] == "Stark"
 
 
@@ -71,7 +71,7 @@ def test_reviewer_loops_back_once_and_fixes_supplier(graph, start, services):
     assert names(result["hops"]).count("supplier_agent") == 2
     assert result["revisions"] == 1
     assert result["slots"]["recommendation"]["supplier"] == "PiedPiper"
-    result = graph.invoke(APPROVE, cfg)
+    graph.invoke(APPROVE, cfg)
     assert len(services.erp.drafts) == 2 and len(services.erp.submitted) == 1
     assert services.erp.submitted[0]["draft_id"] == "DRAFT-002"
 

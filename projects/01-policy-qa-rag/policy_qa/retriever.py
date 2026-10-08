@@ -25,7 +25,8 @@ class Hit:
 
 
 class Retriever(Protocol):
-    def search(self, query: str, k: int = 4) -> list[Hit]: ...
+    def search(self, query: str, k: int = 4) -> list[Hit]:
+        """Return the top ``k`` hits for ``query``, best first."""
 
 
 class BM25Retriever:

@@ -121,9 +121,11 @@ def render(results: dict[str, Any]) -> str:
         "(characters / 4); latency is **simulated** from the harness latency model "
         "(critical path, parallel branches overlap), not a measurement.",
         "",
-        "| Pattern | Quality (task success) | Grounded | Policy viol. | LLM calls / case "
-        "| Est. tokens / case | Tool calls / case | Agent turns / case "
-        "| Sim. latency / case (s) | Failed cases |",
+        (
+            "| Pattern | Quality (task success) | Grounded | Policy viol. | LLM calls / case "
+            "| Est. tokens / case | Tool calls / case | Agent turns / case "
+            "| Sim. latency / case (s) | Failed cases |"
+        ),
         "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in results["patterns"]:

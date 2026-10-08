@@ -117,9 +117,14 @@ def a2a_app(card: AgentCard, skills: dict[str, Skill], guard: Guard | None = Non
                 out = skill.handler(inp, ctx)
                 status = TaskStatus(state="completed")
             except Exception as exc:  # agent failure -> failed task, never a 500
+                # The caller only learns the exception type; the message and stack trace stay in
+                # the server log and on the span, so internals never cross the agent boundary.
+                log.exception("A2A skill %s failed", ctx.skill)
+                span.set_attribute("a2a.error_type", type(exc).__name__)
+                kind = type(exc).__name__
                 out, status = (
-                    {"error": f"{type(exc).__name__}: {exc}"},
-                    TaskStatus(state="failed", message=str(exc)),
+                    {"error": kind},
+                    TaskStatus(state="failed", message=f"{kind} (details are in the agent's log)"),
                 )
             task = Task(
                 contextId=msg.contextId or msg.messageId,
@@ -181,6 +186,7 @@ shared/tests/test_a2a.py::test_unavailable_peer_raises_typed_error PASSED
 
 - Caller and tenant travel with every task and land in the peer's audit log (project 12).
 - Cards are the published contract that a registry can version and promote.
+- A skill that raises returns a `failed` task carrying only the exception type; the message and stack trace stay in the server log and on the span, so internals never cross the agent boundary.
 
 ## 12. Observability
 
@@ -193,6 +199,7 @@ The `traceparent` header joins the caller's and the peer's spans into one trace,
 | bad input | `A2AError` with code `-32602` |
 | policy refusal | `A2AError` with code `-32010` |
 | peer down | `A2AUnavailableError` (degrade or escalate) |
+| skill raises | a `failed` task whose message names the exception type only |
 
 ## 14. Mapping to Azure services
 

@@ -108,7 +108,7 @@ def test_bad_citation_replaced_by_template():
 
     g = build_graph(seed_systems(), llm=MockChatModel(responder=fabricating))
     cfg = {"configurable": {"thread_id": "fab"}}
-    r = g.invoke({"request": request("M-1001", "pt5")}, cfg)
+    g.invoke({"request": request("M-1001", "pt5")}, cfg)
     r = g.invoke(Command(resume={"clinician": "np-lin", "decision": "approve"}), cfg)
     assert "MP-MADE-UP" not in r["narrative"] and "[MP-LSPINE-MRI-2026]" in r["narrative"]
 

@@ -262,8 +262,10 @@ def render_card(project_dir: Path) -> str:
     L: list[str] = [
         f"# Doctrine card: {card.title}",
         "",
-        "<!-- GENERATED from doctrine.yaml + evals/scores.json by "
-        "`python -m shared.doctrine render`. Do not edit by hand. -->",
+        (
+            "<!-- GENERATED from doctrine.yaml + evals/scores.json by "
+            "`python -m shared.doctrine render`. Do not edit by hand. -->"
+        ),
         "",
         f"> {card.summary}",
         "",
@@ -369,9 +371,11 @@ MATRIX_START, MATRIX_END = "<!-- doctrine-matrix:start -->", "<!-- doctrine-matr
 def render_matrix() -> str:
     """Portfolio-level compliance matrix (top-level README), one row per project card."""
     rows = [
-        "| Project | Maturity | Systems of record (MCP servers) | Corpus + ACL | Stop conds"
-        " | Five-exit nodes | Chaos | Golden | Task success | Grounded | Policy viol. | KPI"
-        " (target) |",
+        (
+            "| Project | Maturity | Systems of record (MCP servers) | Corpus + ACL | Stop conds"
+            " | Five-exit nodes | Chaos | Golden | Task success | Grounded | Policy viol. | KPI"
+            " (target) |"
+        ),
         "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for d in project_dirs():

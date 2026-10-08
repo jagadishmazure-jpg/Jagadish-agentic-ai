@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> None:
     print("  UBOs as of application date:", r["ownership"]["ubos"])
     print("  semantic plan (dry run):", json.dumps(r["measure_plans"][2]))
     print("  memo:\n    " + r["memo"].replace("\n", "\n    "))
-    r = g.invoke(Command(resume=MAKER), cfg)
+    g.invoke(Command(resume=MAKER), cfg)
     r = g.invoke(Command(resume=CHECKER), cfg)
     print(f"  -> {r['status']}: {r['booking']} approvals={r['approvals']}")
 

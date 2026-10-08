@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -13,6 +14,8 @@ from pydantic import BaseModel, ValidationError
 from shared import faults
 from shared.a2a.models import AgentCard, Artifact, CallContext, DataPart, Message, Task, TaskStatus
 from shared.observability import telemetry
+
+log = logging.getLogger(__name__)
 
 # JSON-RPC error codes (standard + A2A-style application codes)
 INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS = -32600, -32601, -32602
@@ -116,9 +119,14 @@ def a2a_app(card: AgentCard, skills: dict[str, Skill], guard: Guard | None = Non
                 out = skill.handler(inp, ctx)
                 status = TaskStatus(state="completed")
             except Exception as exc:  # agent failure -> failed task, never a 500
+                # The caller only learns the exception type; the message and stack trace stay in
+                # the server log and on the span, so internals never cross the agent boundary.
+                log.exception("A2A skill %s failed", ctx.skill)
+                span.set_attribute("a2a.error_type", type(exc).__name__)
+                kind = type(exc).__name__
                 out, status = (
-                    {"error": f"{type(exc).__name__}: {exc}"},
-                    TaskStatus(state="failed", message=str(exc)),
+                    {"error": kind},
+                    TaskStatus(state="failed", message=f"{kind} (details are in the agent's log)"),
                 )
             task = Task(
                 contextId=msg.contextId or msg.messageId,

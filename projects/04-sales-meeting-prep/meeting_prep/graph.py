@@ -187,8 +187,10 @@ def build_graph(sources: Sources | None = None, llm: BaseChatModel | None = None
         ]
         if status == "insufficient_data":
             md += [
-                "> ⚠️ Not enough sources responded to produce a reliable brief. "
-                "Check the CRM directly before the meeting.",
+                (
+                    "> ⚠️ Not enough sources responded to produce a reliable brief. "
+                    "Check the CRM directly before the meeting."
+                ),
                 "",
             ]
         points = [f"- {p}" for p in syn["talking_points"]] or ["- (none)"]

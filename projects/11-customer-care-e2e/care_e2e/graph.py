@@ -74,7 +74,7 @@ def build_graph(
         except SystemOfRecordUnavailableError:
             exits.append(exit_record("classify", "degrade", "CRM down: no risk flag; HITL later"))
         except KeyError:
-            pass
+            pass  # account has no risk flag: treat as not risky and rely on the message cue
         cue = any(w in req["message"].lower() for w in ("chargeback", "again and again"))
         if risk or cue:
             route = "fraud"

@@ -315,7 +315,7 @@ def build_graph(
                 )
                 artifacts["draft_purchase_order"] = [d]
             except SystemOfRecordUnavailableError:
-                pass
+                pass  # ERP down: no draft PO; the reviewer and HITL steps report the gap
         run.tools_called, run.artifacts = called, artifacts
         run.summary = f"deterministic sourcing: {pick['supplier'] if pick else 'no supplier'}"
         return run

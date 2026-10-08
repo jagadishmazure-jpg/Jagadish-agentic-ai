@@ -41,7 +41,8 @@ def tokenize(text: str) -> list[str]:
 class Embedder(Protocol):
     dim: int
 
-    def embed(self, text: str) -> list[float]: ...
+    def embed(self, text: str) -> list[float]:
+        """Return a ``dim``-long vector for ``text``."""
 
 
 class HashingEmbedder:

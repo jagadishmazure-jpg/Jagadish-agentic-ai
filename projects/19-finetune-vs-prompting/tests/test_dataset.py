@@ -91,7 +91,7 @@ def test_leak_detector_flags_a_near_duplicate_across_splits():
 
 
 def test_build_refuses_to_write_when_leakage_cannot_be_filtered(monkeypatch, raw):
-    import finetune_lab.dataset as ds
+    from finetune_lab import dataset as ds
 
     monkeypatch.setattr(ds, "find_leaks", lambda splits: {"val": ["X"], "test": []})
     with pytest.raises(LeakageError):
