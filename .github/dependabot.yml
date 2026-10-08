@@ -1,0 +1,34 @@
+# Weekly, grouped dependency updates. Actions are pinned to commit SHAs; Dependabot updates
+# the SHA and the version comment together. Security updates are switched on in the repo settings.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      python:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directories:
+      - "/"
+      - "/projects/11-customer-care-e2e"
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      docker:
+        patterns: ["*"]
+  - package-ecosystem: terraform
+    directory: /infra/terraform
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      terraform:
+        patterns: ["*"]
