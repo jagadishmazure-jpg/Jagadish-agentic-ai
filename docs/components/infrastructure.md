@@ -1,6 +1,6 @@
 # Infrastructure and pipelines (`infra/`, `.github/workflows/`)
 
-Terraform (primary) and Bicep for hosting the portfolio API on Azure Container Apps, and GitHub Actions for CI, infra checks, a gated deploy and teardown. Nothing has been applied.
+Terraform (primary) and Bicep for hosting the portfolio API on Azure Container Apps, and GitHub Actions for CI, infra checks, a gated deploy and teardown. Optional private networking for Foundry and Key Vault, Azure Monitor alert rules and diagnostic settings, and opt-in Defender for Cloud plans, in both tools. Nothing has been applied.
 
 **Sections:** [1. Purpose](#1-purpose) · [2. Architecture](#2-architecture) · [3. How it works](#3-how-it-works) · [4. Key files](#4-key-files) · [5. Code excerpts](#5-code-excerpts) · [6. Configuration](#6-configuration) · [7. Commands](#7-commands) · [8. Real output](#8-real-output) · [9. Tests and eval gates](#9-tests-and-eval-gates) · [10. Guardrails](#10-guardrails) · [11. Security and governance](#11-security-and-governance) · [12. Observability](#12-observability) · [13. Failure modes](#13-failure-modes) · [14. Mapping to Azure services](#14-mapping-to-azure-services) · [15. Limitations](#15-limitations) · [16. Interview talking points](#16-interview-talking-points) · [17. Adopt this](#17-adopt-this)
 
@@ -22,6 +22,9 @@ flowchart LR
     RG --> FDY[Foundry account: model only if live_llm]
     API -->|managed identity| ACR
     API -.->|Cognitive Services OpenAI User if live_llm| FDY
+    RG -.->|private_networking| NET[VNet + NSG, private endpoints: Foundry, Key Vault]
+    RG --> AL[alerts + diagnostic settings]
+    AZ -.->|enable_defender| DF[Defender for Cloud plans: subscription]
 ```
 
 ## 3. How it works
@@ -30,13 +33,16 @@ flowchart LR
 2. `deploy` workflow: stops at a gate unless `DEPLOY_ENABLED` is `true`; then builds the image, provisions dev, pushes to ACR, rolls the app and smoke-tests; prod reuses the same image after an environment approval.
 3. `teardown` is manual and gated the same way.
 4. Dev scales to zero and caps log ingestion; no model is deployed unless `live_llm = true`.
+5. `private_networking` (Bicep `privateNetworking`, default `false`; `prod.tfvars` sets it) adds a VNet with one NSG on both subnets, private endpoints and DNS zones for Foundry and Key Vault, turns public network access off on both (Foundry was hard-coded public before) and VNet-integrates the Container Apps environment. The API ingress stays external, and ACR stays public because Basic SKU has no private endpoints.
+6. `enable_alerts` (default `true`) adds an action group, 3 metric alert rules (Foundry server errors, Foundry 4xx/throttling, Key Vault availability), 3 KQL rules on App Insights (failed requests, exceptions, failing dependencies) and diagnostic settings from Foundry, Key Vault and ACR to Log Analytics. `enable_defender` (default `false`) turns on Defender for Cloud plans `AI`, `Arm` and `KeyVaults`, which are subscription-wide and billed per resource.
 
 ## 4. Key files
 
 | Path | What it holds |
 |---|---|
-| `infra/terraform/` | root module, `modules/` (naming, identity, monitoring, keyvault, registry, foundry, containerapps-env, containerapp), `envs/`, `tests/` |
-| `infra/bicep/main.bicep` | the same stack in Bicep |
+| `infra/terraform/` | root module, `modules/` (naming, identity, monitoring, keyvault, registry, foundry, containerapps-env, containerapp, network, private-endpoint, alerts, defender), `envs/`, `tests/` |
+| `infra/bicep/main.bicep`, `infra/bicep/modules/` | the same stack in Bicep (alerts, defender, network and private-endpoint modules) |
+| `shared/tests/test_infra.py` | Bicep / Terraform parity for private networking, alert rules, diagnostic targets and the Defender default |
 | `.github/workflows/` | `ci.yml` (with gitleaks and SBOM jobs), `codeql.yml`, `infra.yml` (with the image scan, image SBOM and provenance steps), `deploy.yml`, `teardown.yml` |
 | `.checkov.yaml` | justified skips |
 | `Dockerfile` | API image (base pinned by digest; pip/uv removed from the runtime layer) |
@@ -45,7 +51,7 @@ flowchart LR
 
 The API's environment, including the live-model switch:
 
-<!-- code: infra/terraform/main.tf:109-136 -->
+<!-- code: infra/terraform/main.tf:114-141 -->
 ```hcl
 module "api" {
   source              = "./modules/containerapp"
@@ -86,6 +92,9 @@ module "api" {
 | `DEPLOY_TOOL` | repository variable | `terraform` (default) or `bicep` |
 | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | environment variables | OIDC login per environment |
 | `live_llm` | tfvars | deploys a model and the OpenAI role |
+| `private_networking` / `privateNetworking` | tfvars / Bicep param | `false`: public endpoints (cheap demo); `true`: VNet + NSG, private endpoints for Foundry and Key Vault, public access off |
+| `enable_alerts`, `alert_email` | tfvars | alert rules and diagnostic settings (default on); optional on-call email |
+| `enable_defender`, `defender_plans` | tfvars | Defender for Cloud plans (default off: subscription-wide and billed) |
 | `envs/dev.tfvars`, `prod.tfvars` | Terraform | sizes per environment |
 
 ## 7. Commands
@@ -114,12 +123,16 @@ resource "azurerm_cognitive_deployment" "fallback"
 resource "azurerm_role_assignment" "api_openai_user"
 module "aca_env"
 module "api"
+module "network"
+module "private_endpoint"
+module "alerts"
+module "defender"
 ```
 <!-- /output -->
 
 ## 9. Tests and eval gates
 
-`terraform test` runs offline plan assertions with mocked providers (`infra/terraform/tests/`); checkov and tflint run in the `infra` workflow; the container smoke test hits `/healthz`, `/readyz` and `/projects`.
+`terraform test` runs offline plan assertions with mocked providers (`infra/terraform/tests/`), including `private_networking_and_defender` (2 private endpoints, the NSG, the three Defender plans) and the default alert and diagnostic counts; `shared/tests/test_infra.py` fails if Bicep and Terraform drift on private networking, alert rule names, diagnostic targets or the Defender default; checkov and tflint run in the `infra` workflow; the container smoke test hits `/healthz`, `/readyz` and `/projects`.
 
 ## 10. Guardrails
 
@@ -134,10 +147,12 @@ module "api"
 - A source SBOM on every CI run; both images are scanned by Trivy (fixable HIGH/CRITICAL fail), get an image SBOM, and on `main` get keyless build provenance for the image archive.
 - User-assigned managed identity with AcrPull, plus the OpenAI role only with `live_llm`.
 - Key Vault with RBAC; local auth disabled where supported; checkov skips are justified in `.checkov.yaml`.
+- Optional private networking: Foundry and Key Vault behind private endpoints with public access off, one NSG on both subnets.
+- Opt-in Defender for Cloud plans `AI`, `Arm` and `KeyVaults` (`enable_defender`).
 
 ## 12. Observability
 
-Log Analytics and Application Insights are provisioned with the app; the connection string is injected as an environment variable for the OpenTelemetry exporter.
+Log Analytics and Application Insights are provisioned with the app; the connection string is injected as an environment variable for the OpenTelemetry exporter. Diagnostic settings send Foundry, Key Vault and ACR logs and metrics to the workspace, and 6 alert rules route to one action group. Thresholds are untuned starting points.
 
 ## 13. Failure modes
 
@@ -154,12 +169,15 @@ This component is the Azure mapping: Container Apps, Container Registry, Log Ana
 ## 15. Limitations
 
 - Never applied; GitHub environments and reviewers do not exist yet.
+- Private networking, alert rules, diagnostic settings and Defender plans are only built and plan-tested offline. The App Insights log alerts only see data once the app exports to App Insights, which it does not do yet.
+- With private networking on, ACR (Basic) and the API ingress stay public.
 - Project 11 has its own skeleton Bicep that this pipeline does not deploy.
 
 ## 16. Interview talking points
 
 - Two IaC tools on purpose (ADR 0001): Terraform as primary, Bicep for teams that standardise on it.
 - Offline `terraform test` with mocked providers gives real feedback without a subscription.
+- Public by default for a cheap demo, one flag for private endpoints, and a test that keeps Bicep and Terraform in step.
 
 ## 17. Adopt this
 

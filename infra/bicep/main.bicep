@@ -27,6 +27,15 @@ param fallbackModelVersion string = '2025-04-14'
 param liveLlm bool = false
 param keyVaultPurgeProtection bool = environment == 'prod'
 param containerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+@description('Opt-in: VNet with an NSG, private endpoints for Foundry and Key Vault, public access off on both, VNet-integrated Container Apps environment. Off by default (private endpoints and DNS zones bill hourly).')
+param privateNetworking bool = false
+@description('Action group, metric + log alert rules and diagnostic settings to Log Analytics. Cheap; on by default.')
+param enableAlerts bool = true
+@description('Optional on-call email for the action group. Empty = alerts fire in Azure Monitor only.')
+param alertEmail string = ''
+@description('Opt-in: Microsoft Defender for Cloud plans. SUBSCRIPTION-WIDE and billed per resource, so off by default.')
+param enableDefender bool = false
+param defenderPlans array = ['AI', 'Arm', 'KeyVaults']
 
 var regionShort = {
   eastus: 'eus'
@@ -46,6 +55,7 @@ var profiles = {
   standard: { minReplicas: 1, maxReplicas: 5, logQuotaGb: -1, capacity: 50 }
 }
 var p = profiles[costProfile]
+var publicAccess = privateNetworking ? 'Disabled' : 'Enabled'
 var tags = {
   env: environment
   owner: owner
@@ -97,6 +107,9 @@ resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
     enablePurgeProtection: keyVaultPurgeProtection ? true : null
+    // Private networking turns public access off; the API reaches the vault through its private endpoint.
+    publicNetworkAccess: publicAccess
+    networkAcls: { bypass: 'AzureServices', defaultAction: privateNetworking ? 'Deny' : 'Allow' }
   }
 }
 
@@ -119,7 +132,9 @@ resource foundry 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
     allowProjectManagement: true
     customSubDomainName: 'aif-${base}${sfx}'
     disableLocalAuth: true
-    publicNetworkAccess: 'Enabled'
+    // Was hard-coded 'Enabled'; now follows privateNetworking (public stays the cheap default).
+    publicNetworkAccess: publicAccess
+    networkAcls: { defaultAction: privateNetworking ? 'Deny' : 'Allow' }
   }
 }
 
@@ -195,6 +210,7 @@ resource cae 'Microsoft.App/managedEnvironments@2024-03-01' = {
       logAnalyticsConfiguration: { customerId: logs.properties.customerId, sharedKey: logs.listKeys().primarySharedKey }
     }
     workloadProfiles: [{ name: 'Consumption', workloadProfileType: 'Consumption' }]
+    vnetConfiguration: privateNetworking ? { infrastructureSubnetId: network!.outputs.acaSubnetId, internal: false } : null
   }
 }
 
@@ -240,6 +256,78 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
     }
   }
   dependsOn: [acrPull, fallback]
+}
+
+// ---- optional private networking (off by default) ----
+module network 'modules/network.bicep' = if (privateNetworking) {
+  name: 'network'
+  params: {
+    location: location
+    tags: tags
+    name: 'vnet-${base}'
+    dnsZones: [
+      { key: 'cognitiveservices', zone: 'privatelink.cognitiveservices.azure.com' }
+      { key: 'openai', zone: 'privatelink.openai.azure.com' }
+      { key: 'aiservices', zone: 'privatelink.services.ai.azure.com' }
+      { key: 'keyvault', zone: 'privatelink.vaultcore.azure.net' }
+    ]
+  }
+}
+
+var peTargets = [
+  { name: 'foundry', id: foundry.id, group: 'account', zones: ['cognitiveservices', 'openai', 'aiservices'] }
+  { name: 'keyvault', id: kv.id, group: 'vault', zones: ['keyvault'] }
+]
+
+module privateEndpoints 'modules/private-endpoint.bicep' = [for pe in (privateNetworking ? peTargets : []): {
+  name: 'pe-${pe.name}'
+  params: {
+    location: location
+    tags: tags
+    name: 'pe-${pe.name}-${base}'
+    subnetId: network!.outputs.peSubnetId
+    targetResourceId: pe.id
+    groupId: pe.group
+    dnsZoneIds: map(pe.zones, z => network!.outputs.zoneIds[z])
+  }
+}]
+
+// ---- alerting, diagnostics and Defender for Cloud (built offline; not deployed) ----
+module alerts 'modules/alerts.bicep' = if (enableAlerts) {
+  name: 'alerts'
+  params: {
+    location: location
+    tags: tags
+    resourceToken: base
+    actionGroupShortName: 'agentic'
+    alertEmail: alertEmail
+    appInsightsId: appi.id
+    metricAlerts: [
+      { name: 'foundry-5xx', scope: foundry.id, namespace: 'Microsoft.CognitiveServices/accounts', metric: 'ServerErrors', aggregation: 'Total', operator: 'GreaterThan', threshold: 5, severity: 2, description: 'Foundry model endpoint returning server errors; the fallback deployment is carrying traffic' }
+      { name: 'foundry-throttled', scope: foundry.id, namespace: 'Microsoft.CognitiveServices/accounts', metric: 'ClientErrors', aggregation: 'Total', operator: 'GreaterThan', threshold: 50, severity: 3, description: 'Many 4xx from Foundry (quota throttling or auth drift)' }
+      { name: 'kv-availability', scope: kv.id, namespace: 'Microsoft.KeyVault/vaults', metric: 'Availability', aggregation: 'Average', operator: 'LessThan', threshold: 99, severity: 1, description: 'Key Vault availability below 99%' }
+    ]
+    logAlerts: [
+      { name: 'failed-requests', query: 'requests | where success == false', threshold: 5, severity: 2, description: 'More than 5 failed API requests in 15 minutes' }
+      { name: 'exceptions', query: 'exceptions', threshold: 10, severity: 3, description: 'Exception spike in the portfolio API' }
+      { name: 'dependency-fail', query: 'dependencies | where success == false', threshold: 10, severity: 3, description: 'Failing calls to the model or other dependencies' }
+    ]
+  }
+}
+
+var diagSettings = {
+  workspaceId: logs.id
+  logs: [{ categoryGroup: 'allLogs', enabled: true }]
+  metrics: [{ category: 'AllMetrics', enabled: true }]
+}
+resource diagFoundry 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (enableAlerts) { name: 'diag-to-law', scope: foundry, properties: diagSettings }
+resource diagKv 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (enableAlerts) { name: 'diag-to-law', scope: kv, properties: diagSettings }
+resource diagAcr 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (enableAlerts) { name: 'diag-to-law', scope: acr, properties: diagSettings }
+
+module defender 'modules/defender.bicep' = if (enableDefender) {
+  name: 'defender'
+  scope: subscription()
+  params: { plans: defenderPlans }
 }
 
 output AZURE_RESOURCE_GROUP string = resourceGroup().name

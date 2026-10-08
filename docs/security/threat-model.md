@@ -85,5 +85,6 @@ the portfolio API and the care BFF.
 * The portfolio API has no authentication of its own; it must sit behind ingress auth before any
   public deployment.
 * Every agent runs against a deterministic mock model; real-model behaviour under attack is untested.
-* Nothing has been deployed, so network isolation, Entra ID role assignments and Defender plans are
-  checked only by `terraform test`, checkov and `bicep build`.
+* Nothing has been deployed, so network isolation (the optional private endpoints and NSG), Entra ID
+  role assignments, alert rules and the opt-in Defender plans are checked only by `terraform test`,
+  checkov, `bicep build` and the parity tests in `shared/tests/test_infra.py`.

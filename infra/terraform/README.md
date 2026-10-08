@@ -24,7 +24,7 @@ Trade-offs to state up front:
 
 - **Names** follow the Cloud Adoption Framework pattern `<type>-<workload>-<env>-<region>-<instance>`, for example `rg-agentic-dev-eus2-001`. Key Vault drops the region (24-character limit); ACR and Storage use the alphanumeric form. Set `name_suffix` when forking so globally unique names don't collide.
 - **Tags** on every resource group and resource: `env`, `owner`, `project`, `cost-center`, plus `workload` and `managed-by`. Override `owner` / `cost_center` per client in the tfvars.
-- **Profiles.** `envs/dev.tfvars` selects the cost-min profile (scale-to-zero app, Basic ACR, 1 GB/day log cap, no model deployment). `envs/prod.tfvars` selects the hardened/always-on shape (one warm replica (up to 5), higher model capacity when `live_llm` is on, no log cap, Key Vault purge protection (ACR stays Basic in both)). Check the SKUs against the client's pricing agreement before any apply.
+- **Profiles.** `envs/dev.tfvars` selects the cost-min profile (scale-to-zero app, Basic ACR, 1 GB/day log cap, no model deployment). `envs/prod.tfvars` selects the hardened/always-on shape (one warm replica (up to 5), higher model capacity when `live_llm` is on, no log cap, Key Vault purge protection (ACR stays Basic in both)). Check the SKUs against the client's pricing agreement before any apply. Both profiles take `private_networking` (Foundry and Key Vault behind private endpoints, public access off; on in `prod.tfvars`), `enable_alerts` (default on) and `enable_defender` (default off, subscription-wide).
 
 ## Remote state (one-time bootstrap)
 

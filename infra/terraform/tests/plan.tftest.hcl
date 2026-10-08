@@ -38,6 +38,46 @@ run "dev_cost_min" {
     condition     = length(azurerm_cognitive_deployment.fallback) == 1
     error_message = "fallback deployment expected"
   }
+
+  assert {
+    condition     = length(module.network) == 0 && length(module.private_endpoint) == 0
+    error_message = "private networking is opt-in; dev stays public for a cheap demo"
+  }
+
+  assert {
+    condition     = length(module.alerts) == 1 && length(module.alerts[0].metric_alert_names) == 3 && length(module.alerts[0].log_alert_names) == 3
+    error_message = "alerts are on by default: 3 metric and 3 log alert rules"
+  }
+
+  assert {
+    condition     = join(",", module.alerts[0].diagnostic_setting_targets) == "foundry,keyvault,registry"
+    error_message = "Foundry, Key Vault and ACR send logs and metrics to Log Analytics"
+  }
+
+  assert {
+    condition     = length(module.defender) == 0
+    error_message = "Defender for Cloud is subscription-wide and must stay opt-in"
+  }
+}
+
+run "private_networking_and_defender" {
+  command = plan
+
+  variables {
+    environment        = "prod"
+    private_networking = true
+    enable_defender    = true
+  }
+
+  assert {
+    condition     = length(module.private_endpoint) == 2 && startswith(module.network[0].nsg_name, "nsg-")
+    error_message = "private networking adds an NSG-protected VNet and private endpoints for Foundry and Key Vault"
+  }
+
+  assert {
+    condition     = join(",", module.defender[0].plans) == "AI,Arm,KeyVaults"
+    error_message = "enable_defender turns on the AI, Arm and KeyVaults plans"
+  }
 }
 
 run "prod_standard" {

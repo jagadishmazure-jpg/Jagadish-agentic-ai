@@ -4,4 +4,4 @@
 
 | File | What it does |
 |---|---|
-| [`plan.tftest.hcl`](plan.tftest.hcl) | Offline `terraform test`: plans with mocked providers and asserts naming, tags and the per-profile shape. No Azure credentials needed. |
+| [`plan.tftest.hcl`](plan.tftest.hcl) | Offline `terraform test`: plans with mocked providers and asserts naming, tags, the per-profile shape, private networking (2 private endpoints, the NSG), the default alert rules and diagnostic settings and Defender off by default. No Azure credentials needed. |

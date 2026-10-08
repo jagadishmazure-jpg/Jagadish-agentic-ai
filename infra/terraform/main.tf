@@ -45,6 +45,8 @@ module "keyvault" {
   tenant_id                   = data.azurerm_client_config.current.tenant_id
   purge_protection_enabled    = var.key_vault_purge_protection
   secret_reader_principal_ids = module.identity.principal_ids
+  # Private networking turns public access off; the API reaches the vault through its private endpoint.
+  public_network_access_enabled = !var.private_networking
 }
 
 module "registry" {
@@ -69,6 +71,8 @@ module "foundry" {
   chat_model_version   = var.chat_model_version
   chat_deployment_sku  = var.chat_deployment_sku
   chat_capacity        = local.p.capacity
+  # Hard-coded public before; now follows the private networking flag (public stays the cheap default).
+  public_network_access_enabled = !var.private_networking
 }
 
 # Fallback deployment for the primary -> fallback chain in shared/llm.py.
@@ -104,6 +108,7 @@ module "aca_env" {
   tags                       = local.tags
   name                       = module.naming.container_apps_env
   log_analytics_workspace_id = module.monitoring.log_analytics_id
+  infrastructure_subnet_id   = var.private_networking ? module.network[0].aca_subnet_id : ""
 }
 
 module "api" {
@@ -133,4 +138,72 @@ module "api" {
   }
 
   depends_on = [module.registry]
+}
+
+# ---- optional private networking (off by default: private endpoints and DNS zones bill hourly) ----
+module "network" {
+  source              = "./modules/network"
+  count               = var.private_networking ? 1 : 0
+  resource_group_name = azurerm_resource_group.this.name
+  location            = var.location
+  tags                = local.tags
+  name                = module.naming.vnet
+  dns_zones = {
+    cognitiveservices = "privatelink.cognitiveservices.azure.com"
+    openai            = "privatelink.openai.azure.com"
+    aiservices        = "privatelink.services.ai.azure.com"
+    keyvault          = "privatelink.vaultcore.azure.net"
+  }
+}
+
+module "private_endpoint" {
+  source = "./modules/private-endpoint"
+  for_each = var.private_networking ? {
+    foundry  = { id = module.foundry.account_id, group = "account", zones = ["cognitiveservices", "openai", "aiservices"] }
+    keyvault = { id = module.keyvault.id, group = "vault", zones = ["keyvault"] }
+  } : {}
+  resource_group_name = azurerm_resource_group.this.name
+  location            = var.location
+  tags                = local.tags
+  name                = "pe-${each.key}-${module.naming.base}"
+  subnet_id           = module.network[0].pe_subnet_id
+  target_resource_id  = each.value.id
+  group_id            = each.value.group
+  dns_zone_ids        = [for z in each.value.zones : module.network[0].zone_ids[z]]
+}
+
+# ---- alerting, diagnostics and Defender for Cloud (written and tested offline; not deployed) ----
+module "alerts" {
+  source                  = "./modules/alerts"
+  count                   = var.enable_alerts ? 1 : 0
+  resource_group_name     = azurerm_resource_group.this.name
+  location                = var.location
+  tags                    = local.tags
+  name_suffix             = module.naming.base
+  action_group_name       = "ag-${module.naming.base}"
+  action_group_short_name = "agentic"
+  alert_email             = var.alert_email
+  log_analytics_id        = module.monitoring.log_analytics_id
+  app_insights_id         = module.monitoring.app_insights_id
+  metric_alerts = {
+    foundry-5xx       = { scope = module.foundry.account_id, namespace = "Microsoft.CognitiveServices/accounts", metric = "ServerErrors", aggregation = "Total", operator = "GreaterThan", threshold = 5, severity = 2, description = "Foundry model endpoint returning server errors; the fallback deployment is carrying traffic" }
+    foundry-throttled = { scope = module.foundry.account_id, namespace = "Microsoft.CognitiveServices/accounts", metric = "ClientErrors", aggregation = "Total", operator = "GreaterThan", threshold = 50, severity = 3, description = "Many 4xx from Foundry (quota throttling or auth drift)" }
+    kv-availability   = { scope = module.keyvault.id, namespace = "Microsoft.KeyVault/vaults", metric = "Availability", aggregation = "Average", operator = "LessThan", threshold = 99, severity = 1, description = "Key Vault availability below 99%" }
+  }
+  log_alerts = {
+    failed-requests = { query = "requests | where success == false", threshold = 5, severity = 2, description = "More than 5 failed API requests in 15 minutes" }
+    exceptions      = { query = "exceptions", threshold = 10, severity = 3, description = "Exception spike in the portfolio API" }
+    dependency-fail = { query = "dependencies | where success == false", threshold = 10, severity = 3, description = "Failing calls to the model or other dependencies" }
+  }
+  diagnostic_targets = {
+    foundry  = module.foundry.account_id
+    keyvault = module.keyvault.id
+    registry = module.registry.id
+  }
+}
+
+module "defender" {
+  source = "./modules/defender"
+  count  = var.enable_defender ? 1 : 0
+  plans  = var.defender_plans
 }
