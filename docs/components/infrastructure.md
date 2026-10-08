@@ -37,7 +37,7 @@ flowchart LR
 |---|---|
 | `infra/terraform/` | root module, `modules/` (naming, identity, monitoring, keyvault, registry, foundry, containerapps-env, containerapp), `envs/`, `tests/` |
 | `infra/bicep/main.bicep` | the same stack in Bicep |
-| `.github/workflows/` | `ci.yml`, `infra.yml`, `deploy.yml`, `teardown.yml` |
+| `.github/workflows/` | `ci.yml` (with a gitleaks job), `codeql.yml`, `infra.yml`, `deploy.yml`, `teardown.yml` |
 | `.checkov.yaml` | justified skips |
 | `Dockerfile` | API image |
 
@@ -130,6 +130,7 @@ module "api"
 ## 11. Security and governance
 
 - OIDC federated credentials; no client secret in GitHub.
+- Every action pinned to a commit SHA with read-only default permissions; gitleaks, CodeQL and Dependabot (see `SECURITY.md`).
 - User-assigned managed identity with AcrPull, plus the OpenAI role only with `live_llm`.
 - Key Vault with RBAC; local auth disabled where supported; checkov skips are justified in `.checkov.yaml`.
 
