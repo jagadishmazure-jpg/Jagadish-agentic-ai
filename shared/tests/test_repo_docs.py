@@ -81,3 +81,26 @@ def test_readme_test_count_is_current():
     total = sum(int(n) for n in re.findall(r"\.py: (\d+)$", out, re.M))
     m = re.search(r"\*\*(\d+) automated tests\*\*", (ROOT / "README.md").read_text())
     assert m and int(m.group(1)) == total, (m and m.group(1), total)
+
+
+def test_workflows_are_hardened():
+    """Supply-chain guard: every third-party action is pinned to a full commit SHA with a version
+    comment, every workflow sets top-level permissions, CI runs gitleaks, and CodeQL and Dependabot
+    are configured. Dependabot bumps keep the SHA and the comment together, so this stays green."""
+    wf_dir = ROOT / ".github" / "workflows"
+    for f in sorted(wf_dir.glob("*.yml")):
+        text = f.read_text()
+        assert re.search(r"^permissions:", text, re.M), f"{f.name}: no top-level permissions"
+        for line in text.splitlines():
+            m = re.search(r"\buses:\s*([^\s#]+)\s*(#.*)?$", line)
+            if m and not m.group(1).startswith("./"):
+                assert re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", m.group(1)), (
+                    f"{f.name}: {line.strip()}"
+                )
+                assert m.group(2) and re.match(r"#\s*v\d", m.group(2)), (
+                    f"{f.name}: no version comment"
+                )
+    assert "gitleaks/gitleaks-action@" in (wf_dir / "ci.yml").read_text()
+    assert "github/codeql-action/analyze@" in (wf_dir / "codeql.yml").read_text()
+    deps = (ROOT / ".github" / "dependabot.yml").read_text()
+    assert "package-ecosystem: github-actions" in deps and "interval: weekly" in deps

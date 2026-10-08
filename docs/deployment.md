@@ -8,7 +8,8 @@ This repository deploys with **GitHub Actions** (not Azure DevOps). Infrastructu
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [`ci.yml`](../.github/workflows/ci.yml) | push to `main`, pull requests | The existing application checks (lint, tests, eval gates, Bicep build). Unchanged by the deployment work. |
+| [`ci.yml`](../.github/workflows/ci.yml) | push to `main`, pull requests | The application checks (lint, tests, eval gates, doc drift) and a gitleaks scan of the full git history. |
+| [`codeql.yml`](../.github/workflows/codeql.yml) | push to `main`, pull requests, weekly | CodeQL analysis of the Python code and of the workflow files; findings go to the Security tab. |
 | [`infra.yml`](../.github/workflows/infra.yml) | push to `main`, pull requests, manual | `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked providers), tflint, checkov, container build + local smoke. `terraform plan` runs only if the Azure OIDC variables exist; otherwise the job logs a notice and passes, and validation is still enforced. |
 | [`deploy.yml`](../.github/workflows/deploy.yml) | push to `main`, manual (`deploy_tool`: `terraform` or `bicep`) | Build the image(s), provision `dev`, push, roll, smoke test; then, after approval, provision `prod`, promote the same image, roll, smoke test. Gated by `DEPLOY_ENABLED == 'true'`. |
 | [`teardown.yml`](../.github/workflows/teardown.yml) | manual only | Destroys one environment with the tool that created it. Gated by `DEPLOY_ENABLED`, runs in the matching GitHub Environment (so prod teardown also needs approval) and requires typing the environment name again. |
