@@ -40,3 +40,5 @@ uv run python scripts/render_docs.py --check
   the build instead of silently updating the numbers.
 - The doctrine gate also fails when a generated `DOCTRINE.md` or the compliance matrix in the
   top-level README is stale, so docs cannot drift from the cards.
+
+**SBOM.** The `sbom` job in `ci.yml` writes an SPDX JSON bill of materials for the source tree on every run (artifact `sbom.spdx.json`). The image job in `infra.yml` adds a Trivy scan that fails on fixable HIGH/CRITICAL findings, an SPDX image SBOM and, on `main`, keyless build provenance for the image archive (`actions/attest-build-provenance`); see [`SECURITY.md`](../../SECURITY.md) for how to verify it.

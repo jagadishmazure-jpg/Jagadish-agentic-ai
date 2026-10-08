@@ -37,9 +37,9 @@ flowchart LR
 |---|---|
 | `infra/terraform/` | root module, `modules/` (naming, identity, monitoring, keyvault, registry, foundry, containerapps-env, containerapp), `envs/`, `tests/` |
 | `infra/bicep/main.bicep` | the same stack in Bicep |
-| `.github/workflows/` | `ci.yml` (with a gitleaks job), `codeql.yml`, `infra.yml`, `deploy.yml`, `teardown.yml` |
+| `.github/workflows/` | `ci.yml` (with gitleaks and SBOM jobs), `codeql.yml`, `infra.yml` (with the image scan, image SBOM and provenance steps), `deploy.yml`, `teardown.yml` |
 | `.checkov.yaml` | justified skips |
-| `Dockerfile` | API image |
+| `Dockerfile` | API image (base pinned by digest; pip/uv removed from the runtime layer) |
 
 ## 5. Code excerpts
 
@@ -131,6 +131,7 @@ module "api"
 
 - OIDC federated credentials; no client secret in GitHub.
 - Every action pinned to a commit SHA with read-only default permissions; gitleaks, CodeQL and Dependabot (see `SECURITY.md`).
+- A source SBOM on every CI run; both images are scanned by Trivy (fixable HIGH/CRITICAL fail), get an image SBOM, and on `main` get keyless build provenance for the image archive.
 - User-assigned managed identity with AcrPull, plus the OpenAI role only with `live_llm`.
 - Key Vault with RBAC; local auth disabled where supported; checkov skips are justified in `.checkov.yaml`.
 

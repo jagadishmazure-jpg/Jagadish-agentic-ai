@@ -6,6 +6,8 @@ Notable changes, newest first. The format follows [Keep a Changelog](https://kee
 
 ### Added
 
+- SBOM job in CI: an SPDX JSON software bill of materials of the source tree on every run (artifact `sbom.spdx.json`).
+- Container supply chain: base images pinned by digest, pip/uv removed from runtime images, a Trivy image scan that fails on fixable HIGH/CRITICAL findings, an image SBOM, and keyless build provenance for the image archive on `main` (`actions/attest-build-provenance`; verification steps in `SECURITY.md`).
 - Supply-chain hardening: every GitHub Action pinned to a commit SHA, top-level `permissions` on `ci.yml`, a gitleaks job in CI, a CodeQL workflow, `.github/dependabot.yml` and a guard test (`test_workflows_are_hardened`).
 - GitHub settings: secret scanning and push protection, Dependabot alerts and security updates, private vulnerability reporting and a `main` ruleset.
 - `docs/best-practices.md`: cloud and agentic AI practices with honest status and links.
