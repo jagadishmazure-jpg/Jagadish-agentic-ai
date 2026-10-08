@@ -56,7 +56,7 @@ class PromptShields:
 
     endpoint: str
     credential: Any = None
-    transport: Transport = _httpx_post
+    transport: Transport | None = None  # None: real HTTPS via httpx
     calls: int = 0
     errors: int = 0
     _token: Callable[[], str] | None = field(default=None, repr=False)
@@ -80,7 +80,8 @@ class PromptShields:
             "userPrompt": user_prompt[:MAX_CHARS],
             "documents": [d[:MAX_CHARS] for d in documents],
         }
-        out = self.transport(
+        send = self.transport or _httpx_post
+        out = send(
             f"{self.endpoint.rstrip('/')}/contentsafety/text:shieldPrompt",
             {"api-version": API_VERSION},
             {"Authorization": f"Bearer {self._bearer()}"},
