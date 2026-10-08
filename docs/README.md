@@ -4,6 +4,7 @@ Cross-project documentation.
 
 | File | What it does |
 |---|---|
+| [`security/`](security/README.md) | Threat model: STRIDE, OWASP Top 10 for LLM Applications and MITRE ATLAS mapped to this repo's components, with controls, tests and built / planned status |
 | [`adr/`](adr/README.md) | Architecture decision records: one file per decision, with context, decision and consequences |
 | [`best-practices.md`](best-practices.md) | Enterprise cloud and agentic AI checklist for the portfolio, each item marked implemented, written-not-deployed or planned, with links to the code |
 | [`components/`](components/README.md) | One full doc per shared platform component (model factory, context builder, tool gateway, MCP servers, A2A, API, resilience, observability, evals, doctrine gate, infrastructure) |
