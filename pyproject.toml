@@ -27,7 +27,7 @@ otlp = ["opentelemetry-exporter-otlp-proto-http>=1.45.0,<2"]
 [dependency-groups]
 dev = [
     "pytest>=9.1.1,<10",
-    "ruff>=0.16.9,<0.17",
+    "ruff>=0.16.9,<0.18",
 ]
 
 [build-system]
