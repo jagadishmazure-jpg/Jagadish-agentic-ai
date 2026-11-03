@@ -548,7 +548,7 @@ Nothing here is deployed. This is how each piece would map onto Azure:
 | `Specialist.run(task) -> AgentRun` | An **A2A** client call to a remote agent. The supervisor only depends on this interface |
 | `demand_agent` + `SalesWarehouse` | A **Databricks** agent (Mosaic AI Agent Framework / model serving) over Unity Catalog sales tables, exposed as an A2A endpoint |
 | `inventory_agent` + `Erp` | A **SAP** agent (SAP Joule / BTP, or an MCP/OData tool server over S/4HANA MM/MRP APIs), read-only scope |
-| `supplier_agent` | An agent in **Azure AI Foundry Agent Service** / **Microsoft Agent Framework**, with tools for supplier portal / Ariba quotes and a PO *draft* API |
+| `supplier_agent` | An agent in **Microsoft Foundry Agent Service** / **Microsoft Agent Framework**, with tools for supplier portal / Ariba quotes and a PO *draft* API |
 | `submit_po` + idempotency key | An S/4HANA PO create call behind an approval gate, with an idempotency key or ERP external reference |
 | `interrupt()` + `MemorySaver` | A durable checkpointer (Postgres / Cosmos DB), with approval surfaced in Teams (Adaptive Card) that calls `Command(resume=...)` |
 | Least-privilege tool sets | Separate managed identities / Entra app registrations per agent, APIM policies, and Key Vault for secrets |
