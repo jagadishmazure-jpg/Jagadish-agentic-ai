@@ -13,7 +13,7 @@ dependencies = [
     "langchain>=1.4.2,<2",
     "mcp>=1.30.0",
     "langchain-mcp-adapters>=0.3.2",
-    "opentelemetry-sdk>=1.45.0",
+    "opentelemetry-sdk>=1.45.1",
     "pyyaml>=6.0.3",
     "fastapi>=0.115",
     "scikit-learn>=1.6,<2",
@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 openai = ["langchain-openai>=1.6.6,<2", "azure-identity>=1.19,<2"]
-otlp = ["opentelemetry-exporter-otlp-proto-http>=1.45.0,<2"]
+otlp = ["opentelemetry-exporter-otlp-proto-http>=1.45.1,<2"]
 
 [dependency-groups]
 dev = [
