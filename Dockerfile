@@ -2,7 +2,7 @@
 # Build from the repo root:  docker build -t agentic-portfolio .
 # Run:                       docker run -p 8080:8080 agentic-portfolio   ->  GET /healthz, /projects
 # Base image pinned by digest (tag kept for readability); Dependabot's docker ecosystem bumps both.
-FROM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c
+FROM python:3.15-slim@sha256:8c13a3f37a6a5b71498228e902c4b9f51c1f7900d49fabf71f9a650c6120e0d0
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LLM_PROVIDER=mock PORT=8080
 RUN pip install --no-cache-dir uv==0.12.23
 WORKDIR /app
