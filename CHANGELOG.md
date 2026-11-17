@@ -4,8 +4,14 @@ Notable changes, newest first. The format follows [Keep a Changelog](https://kee
 
 ## Unreleased
 
+### Fixed
+
+- Container images upgrade Debian packages on top of the pinned Python base so fixable HIGH findings in apt (CVE-2026-109518) and zlib (CVE-2026-85091) do not fail the image scan.
+
 ### Added
 
+- IT desk playbook agent on Amazon Bedrock (`aws-it-desk-agent/`): project 01's corrective RAG graph over an IT playbook, Claude or Llama via InvokeModel when `IT_DESK_PROVIDER=bedrock`, mock otherwise. Terraform for Bedrock AgentCore Runtime or ECS Fargate, CloudWatch logs, and a list-price cost comparison against the Azure path. Offline plan tests. Not applied, and not called against a live Bedrock model.
+- Assessment bank (`assessment-bank/`): YAML question banks for the eight course modules, pytest labs, a FastAPI app, mock sign-in and an in-memory progress store by default. Terraform and Bicep for Azure Container Apps and Cosmos DB (keys off). Entra External ID app registration is Terraform-only. Not deployed, and not exercised against a live tenant or Cosmos account.
 - Private networking option in Terraform and Bicep (`private_networking` / `privateNetworking`, default `false`; on in `prod.tfvars`): VNet with one NSG on both subnets, private endpoints and DNS zones for Foundry and Key Vault, public access off on both (Foundry was hard-coded public), VNet-integrated Container Apps environment. Azure Monitor alerting (on by default): action group, 3 metric and 3 KQL alert rules, diagnostic settings from Foundry, Key Vault and ACR. Opt-in Defender for Cloud plans (`enable_defender = false`). New Bicep modules under `infra/bicep/modules/`, a `private_networking_and_defender` plan test and two parity tests in `shared/tests/test_infra.py`; not deployed.
 - Opt-in Azure AI Content Safety Prompt Shields screen (`shared/context/content_safety.py`): with `PROMPT_SHIELDS=1` and `AZURE_CONTENT_SAFETY_ENDPOINT`, sanitised context evidence and tool payloads are also screened, keyless and fail closed. Offline the regex sanitizer remains the only screen. 5 tests with a fake transport; not run against Azure.
 - Project 19 Azure fine-tuning script is keyless: `DefaultAzureCredential` with a bearer-token provider for the data plane and an ARM token for `--deploy`; no API key or management token is read from the environment, the dry run documents scopes and roles, and three new tests cover it.

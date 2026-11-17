@@ -1,0 +1,52 @@
+id: foundations
+title: Foundations
+questions:
+  - id: foundations-q1
+    type: single
+    prompt: What makes one of these projects an agent rather than a single prompt?
+    choices:
+      - {id: a, text: A longer system prompt}
+      - {id: b, text: Typed state, tools, stop conditions and an eval}
+      - {id: c, text: A fine-tuned model with no tools}
+      - {id: d, text: A spreadsheet of example answers}
+    answer: b
+    explanation: The portfolio treats an agent as a graph with state, tools, stops and a measured eval.
+  - id: foundations-q2
+    type: single
+    prompt: What runs when no model provider is configured?
+    choices:
+      - {id: a, text: A call to Azure OpenAI}
+      - {id: b, text: A deterministic mock chat model}
+      - {id: c, text: The tests are skipped}
+      - {id: d, text: A random sample from the golden set}
+    answer: b
+    explanation: Offline mode is the default so CI does not need a subscription or a model quota.
+  - id: foundations-q3
+    type: multi
+    prompt: Which items belong on a doctrine card?
+    choices:
+      - {id: a, text: Systems of record}
+      - {id: b, text: A five-exit row for every graph node}
+      - {id: c, text: The learner's password}
+      - {id: d, text: An eval set and a KPI}
+    answers: [a, b, d]
+    explanation: A card names systems, exits, evals and a KPI. Secrets do not belong in the card.
+  - id: foundations-q4
+    type: single
+    prompt: How does this repo estimate tokens when it does not call a tokenizer?
+    choices:
+      - {id: a, text: One token per word}
+      - {id: b, text: About four characters per token}
+      - {id: c, text: The length of the embedding vector}
+      - {id: d, text: A fixed 100 tokens per call}
+    answer: b
+    explanation: estimate_tokens uses about four characters per token for budgets and cost sketches.
+labs:
+  - id: foundations-lab-tokens
+    title: Estimate tokens
+    prompt: |
+      Write solution.py with estimate_tokens(text: str) -> int.
+      Return 0 for an empty string. Otherwise return max(1, len(text) // 4).
+    tests: foundations_tokens.py
+    points: 3
+    timeout_seconds: 5

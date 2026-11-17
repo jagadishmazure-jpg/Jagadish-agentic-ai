@@ -1,0 +1,52 @@
+id: production-deployment
+title: Production & Deployment
+questions:
+  - id: prod-q1
+    type: single
+    prompt: How does the GitHub Actions deploy workflow authenticate to Azure?
+    choices:
+      - {id: a, text: A client secret stored in the repository}
+      - {id: b, text: OIDC federation, with no client secret in the workflow}
+      - {id: c, text: A personal access token printed in the logs}
+      - {id: d, text: An account key in the container image}
+    answer: b
+    explanation: azure/login uses a federated credential. The workflow is still gated off until DEPLOY_ENABLED is set.
+  - id: prod-q2
+    type: single
+    prompt: What is true of the Terraform in this repo today?
+    choices:
+      - {id: a, text: It is applied to production on every pull request}
+      - {id: b, text: It validates and plans offline, and has not been applied}
+      - {id: c, text: It stores secrets in tfvars committed to git}
+      - {id: d, text: It replaces the Python tests}
+    answer: b
+    explanation: CI runs fmt, validate and mocked plan tests. Apply stays manual and gated.
+  - id: prod-q3
+    type: multi
+    prompt: Which signals belong on a running agent service?
+    choices:
+      - {id: a, text: A health check}
+      - {id: b, text: Traces with token counts}
+      - {id: c, text: The full text of every customer secret in the logs}
+      - {id: d, text: A log of status, latency and citation ids}
+    answers: [a, b, d]
+    explanation: Observability should show health, cost and outcome. Secrets and raw questions stay out of the log line.
+  - id: prod-q4
+    type: single
+    prompt: Why does dev scale to zero replicas?
+    choices:
+      - {id: a, text: So an idle demo does not bill for warm compute}
+      - {id: b, text: So the health check can be removed}
+      - {id: c, text: So logs are deleted}
+      - {id: d, text: Scale to zero is required for OIDC}
+    answer: a
+    explanation: The cost-min profile sets min replicas to 0. A live model is a separate opt-in.
+labs:
+  - id: production-lab-health
+    title: Health payload
+    prompt: |
+      Write solution.py with health() -> dict.
+      Return a dictionary with exactly one key, status, and the value ok.
+    tests: production_health.py
+    points: 3
+    timeout_seconds: 5

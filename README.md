@@ -6,10 +6,10 @@
 - **Eight multi-agent orchestration patterns compared side by side** on the same mortgage underwriting task, measured on answer quality, cost (LLM calls and tokens) and behaviour under injected failures.
 - **Built-in safety and governance:** human approval before risky actions, prompt-injection guardrails, access-controlled retrieval (RAG), and long-term customer memory that can forget on request (right to be forgotten).
 - **Quality is measured, not assumed:** eval gates in CI block a release if scores regress, and a fine-tuning study on synthetic mortgage document classification lifts test accuracy from 0.64 to 0.97 while using about 90% fewer input tokens per call (run offline).
-- **554 automated tests** run on every push in GitHub Actions, alongside lint and eval gates.
+- **585 automated tests** run on every push in GitHub Actions, alongside lint and eval gates.
 - **Packaged as a small service:** a FastAPI catalog/eval API ([`shared/api`](shared/api/README.md)) in one container image, with Terraform and Bicep for Azure Container Apps ([`infra/`](infra/README.md)) and a GitHub Actions pipeline with OIDC login and dev -> prod approval gates. The pipeline is switched off until a subscription exists ([docs/deployment.md](docs/deployment.md)).
 
-**Skills demonstrated:** Python, LangGraph, LangChain, RAG, MCP, A2A, LLM evaluation, fine-tuning, OpenTelemetry, FastAPI, Docker, Terraform, Bicep, Azure Container Apps, CI/CD (GitHub Actions, OIDC).
+**Skills demonstrated:** Python, LangGraph, LangChain, RAG, MCP, A2A, LLM evaluation, fine-tuning, OpenTelemetry, FastAPI, Docker, Terraform, Bicep, Azure Container Apps, Amazon Bedrock (Claude and Llama), Bedrock AgentCore, ECS Fargate, CloudWatch, Entra External ID, Cosmos DB, CI/CD (GitHub Actions, OIDC).
 
 *Honesty note: everything runs offline against a deterministic mock model and mock enterprise services; it has not been deployed to live Azure yet (see "Offline by default" below).*
 
@@ -165,6 +165,8 @@ evals/              # `python -m evals` runner for all projects
 projects/NN-name/   # README, package, tests, run.py, doctrine.yaml, DOCTRINE.md, evals/
 .github/workflows/  # CI: ruff + pytest + eval gate + doctrine gate + gitleaks (offline); CodeQL; infra checks; gated deploy
 infra/              # Terraform (primary) and Bicep for Azure Container Apps
+aws-it-desk-agent/  # Project 01's IT policy graph on Bedrock, AgentCore or Fargate, CloudWatch
+assessment-bank/    # Course question banks, pytest labs, Entra External ID, Cosmos DB
 docs/               # implementation-guide, adopt-this, components/, deployment, best-practices, adr/
 scripts/            # render_docs.py (doc drift check), doc_tables.py, component_demos.py
 Dockerfile          # API image (uv, non-root)
@@ -180,6 +182,8 @@ Every folder has its own README with a file-by-file table. Good starting points:
 | [`evals/`](evals/README.md) | The `python -m evals` runner and its flags |
 | [`.github/workflows/`](.github/workflows/README.md) | What CI runs and how to reproduce it locally |
 | [`infra/`](infra/README.md) | Terraform and Bicep for hosting the API; [`docs/deployment.md`](docs/deployment.md) covers the pipeline |
+| [`aws-it-desk-agent/`](aws-it-desk-agent/README.md) | The IT desk playbook (project 01's graph) on Amazon Bedrock, AgentCore or Fargate, with a cost comparison |
+| [`assessment-bank/`](assessment-bank/README.md) | YAML question banks, pytest labs, Entra External ID and Cosmos DB |
 | `projects/NN-name/` | Each project README has a **Key files** section (4) linking its package, `tests/` and `evals/` READMEs, e.g. [`03-refund-agent`](projects/03-refund-agent/README.md#4-key-files) |
 
 ## Setup
@@ -255,6 +259,8 @@ apply, the mock model is used.
 
 Nothing is deployed. The portfolio can be hosted as one small service: [`shared/api`](shared/api/README.md) (list projects, read scores, rerun a golden set, mock model only) in the root [`Dockerfile`](Dockerfile), on Azure Container Apps via [`infra/terraform`](infra/terraform/README.md) or [`infra/bicep`](infra/bicep/README.md). The GitHub Actions pipeline ([docs/deployment.md](docs/deployment.md)) builds the image, signs in with OIDC and goes dev -> prod with an approval; it stays switched off until the repository variable `DEPLOY_ENABLED` is set.
 
+Two course additions sit beside that stack and are also offline until a cloud account exists. [`aws-it-desk-agent`](aws-it-desk-agent/README.md) runs the IT desk playbook on Amazon Bedrock (AgentCore or Fargate, CloudWatch). [`assessment-bank`](assessment-bank/README.md) serves the module question banks on Container Apps with Entra External ID and Cosmos DB. Both READMEs list what a live account has to provide. CI plans the Terraform and does not apply it.
+
 ```bash
 uvicorn shared.api.app:create_app --factory --port 8000   # run the API locally
 ```
@@ -264,6 +270,7 @@ uvicorn shared.api.app:create_app --factory --port 8000   # run the API locally
 * Everything runs against a deterministic mock model, mock systems of record and synthetic data. Eval scores measure the graphs, retrieval and policies, not a real model's quality.
 * The real-model path is keyless (managed identity through `DefaultAzureCredential`) and unit-tested with fakes, but it has never called a live Azure OpenAI endpoint. The deployed API runs the mock unless `live_llm = true`.
 * The Terraform and Bicep pass validation, offline plan tests, tflint and checkov, but have never been applied. The pipeline's GitHub Environments and reviewers do not exist yet.
+* The IT desk Bedrock stack and the assessment bank (Container Apps, Entra External ID, Cosmos DB) pass the same kind of offline plan tests. They have not been applied, and no live Bedrock or External ID tenant has been called.
 * Project 11's own skeleton Bicep (`projects/11-customer-care-e2e/deploy/azure/`) is separate from this pipeline and not mirrored in Terraform.
 * The fine-tuning study (19) trains an offline stand-in model; the Azure OpenAI fine-tuning script is a dry run.
 

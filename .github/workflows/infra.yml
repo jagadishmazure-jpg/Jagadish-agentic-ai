@@ -4,6 +4,8 @@
 #   tflint (skipped with a warning if it cannot be installed)
 #   checkov security scan (config: .checkov.yaml; unlisted findings fail the job)
 #   bicep build of the Bicep twin (infra/bicep)
+#   the same fmt / validate / test for aws-it-desk-agent/terraform
+#   and for assessment-bank/infra (Terraform test plus bicep build)
 #   container image build + a local /healthz smoke run
 #   terraform plan: only when AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID are set
 name: infra
@@ -76,6 +78,44 @@ jobs:
       - run: pip install --quiet checkov==3.3.20
       - name: checkov (Terraform)
         run: checkov -d "$STACK" --config-file .checkov.yaml
+
+  aws-it-desk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with: { terraform_version: "${{ env.TF_VERSION }}", terraform_wrapper: false }
+      - name: terraform fmt
+        run: terraform -chdir=aws-it-desk-agent/terraform fmt -check -recursive -diff
+      - name: terraform init (no backend)
+        run: terraform -chdir=aws-it-desk-agent/terraform init -backend=false -input=false
+      - name: terraform validate
+        run: terraform -chdir=aws-it-desk-agent/terraform validate
+      - name: terraform test (offline plan with mocked providers)
+        run: terraform -chdir=aws-it-desk-agent/terraform test
+
+  assessment-bank:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with: { terraform_version: "${{ env.TF_VERSION }}", terraform_wrapper: false }
+      - name: terraform fmt
+        run: terraform -chdir=assessment-bank/infra/terraform fmt -check -recursive -diff
+      - name: terraform init (no backend)
+        run: terraform -chdir=assessment-bank/infra/terraform init -backend=false -input=false
+      - name: terraform validate
+        run: terraform -chdir=assessment-bank/infra/terraform validate
+      - name: terraform test (offline plan with mocked providers)
+        run: terraform -chdir=assessment-bank/infra/terraform test
+      - name: Install Bicep CLI (pinned)
+        run: |
+          curl -sSLo bicep https://github.com/Azure/bicep/releases/download/v0.47.16/bicep-linux-x64
+          chmod +x bicep && sudo mv bicep /usr/local/bin/bicep && bicep --version
+      - name: bicep build (warnings fail)
+        run: |
+          bicep build assessment-bank/infra/bicep/main.bicep --stdout > /dev/null 2> bicep.log || { cat bicep.log; exit 1; }
+          cat bicep.log; if grep -q "Warning" bicep.log; then exit 1; fi
 
   container:
     runs-on: ubuntu-latest

@@ -20,6 +20,8 @@ updates:
     directories:
       - "/"
       - "/projects/11-customer-care-e2e"
+      - "/aws-it-desk-agent"
+      - "/assessment-bank"
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
     groups:
@@ -31,4 +33,18 @@ updates:
     open-pull-requests-limit: 5
     groups:
       terraform:
+        patterns: ["*"]
+  - package-ecosystem: terraform
+    directory: /aws-it-desk-agent/terraform
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      terraform-aws:
+        patterns: ["*"]
+  - package-ecosystem: terraform
+    directory: /assessment-bank/infra/terraform
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      terraform-assessment:
         patterns: ["*"]

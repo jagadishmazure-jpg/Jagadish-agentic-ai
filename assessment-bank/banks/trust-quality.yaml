@@ -1,0 +1,54 @@
+id: trust-quality
+title: Trust & Quality
+questions:
+  - id: trust-q1
+    type: single
+    prompt: What does the eval gate do in CI?
+    choices:
+      - {id: a, text: It blocks the run when a golden-set score drops under the threshold}
+      - {id: b, text: It rewrites the threshold to match the new score}
+      - {id: c, text: It deploys to production}
+      - {id: d, text: It deletes failing tests}
+    answer: a
+    explanation: python -m evals --no-write fails the job instead of updating the checked-in scores.
+  - id: trust-q2
+    type: single
+    prompt: Why do chaos tests kill the model and a system of record?
+    choices:
+      - {id: a, text: To check the node takes the exit its doctrine row declared}
+      - {id: b, text: To measure GPU temperature}
+      - {id: c, text: To skip the golden set}
+      - {id: d, text: To generate training data from production}
+    answer: a
+    explanation: Each node documents success, retry, compensate, degrade and escalate. Chaos checks the degrade path.
+  - id: trust-q3
+    type: multi
+    prompt: Which data is acceptable in this repository?
+    choices:
+      - {id: a, text: Synthetic tickets and policies}
+      - {id: b, text: A real customer's national id}
+      - {id: c, text: A prompt-injection string planted in a fixture}
+      - {id: d, text: A made-up example.com address}
+    answers: [a, c, d]
+    explanation: Fixtures are synthetic on purpose, including the injection string the sanitiser must catch.
+  - id: trust-q4
+    type: single
+    prompt: What is prompt injection in a retrieved chunk?
+    choices:
+      - {id: a, text: Untrusted text that tries to override the system instructions}
+      - {id: b, text: A missing citation}
+      - {id: c, text: A slow database query}
+      - {id: d, text: A duplicate chunk id}
+    answer: a
+    explanation: The sanitiser strips instruction-like spans before the model sees the chunk.
+labs:
+  - id: trust-lab-redact
+    title: Redact email addresses
+    prompt: |
+      Write solution.py with redact_emails(text: str) -> str.
+      Replace every email address with the exact token [redacted].
+      An email is letters, digits, dots or dashes, then @, then a hostname with a dot.
+      Leave the rest of the text unchanged.
+    tests: trust_redact.py
+    points: 3
+    timeout_seconds: 5
