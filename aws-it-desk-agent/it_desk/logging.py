@@ -41,7 +41,8 @@ def event(
 
 
 class LogSink(Protocol):
-    def emit(self, record: dict[str, Any]) -> str: ...
+    def emit(self, record: dict[str, Any]) -> str:
+        """Write one JSON log record and return the line."""
 
 
 class MemorySink:

@@ -80,15 +80,24 @@ def _money(value: float) -> str:
     return f"{value:.4f}"
 
 
+def _line(*parts: str) -> str:
+    """Join wrapped text. Avoids implicit concatenation inside a list literal."""
+    return "".join(parts)
+
+
 def report(rows: list[Sample] | None = None, *, latency: bool = False) -> str:
     rows = rows if rows is not None else samples()
     mean_in = sum(r.tokens_in for r in rows) / len(rows)
     mean_out = sum(r.tokens_out for r in rows) / len(rows)
     lines = [
-        "IT desk playbook agent: list-price cost for "
-        f"{REQUESTS} questions/month (not a live bill).",
-        "Tokens are the mean of the offline demo questions, counted with "
-        "policy_qa.text.estimate_tokens (~4 characters per token) on every mock model call.",
+        _line(
+            "IT desk playbook agent: list-price cost for ",
+            f"{REQUESTS} questions/month (not a live bill).",
+        ),
+        _line(
+            "Tokens are the mean of the offline demo questions, counted with ",
+            "policy_qa.text.estimate_tokens (~4 characters per token) on every mock model call.",
+        ),
         "The Azure and Bedrock paths run this same graph. Only the price card changes.",
         "",
         f"Mean input tokens per question: {mean_in:.1f}",
@@ -105,9 +114,11 @@ def report(rows: list[Sample] | None = None, *, latency: bool = False) -> str:
         )
     lines += [
         "",
-        "Runtime USD for the same month. Assumptions, not measurements: "
-        "2s active CPU and 8s session memory at 0.5 GB per question. "
-        "Fargate is 0.25 vCPU and 0.5 GB.",
+        _line(
+            "Runtime USD for the same month. Assumptions, not measurements: ",
+            "2s active CPU and 8s session memory at 0.5 GB per question. ",
+            "Fargate is 0.25 vCPU and 0.5 GB.",
+        ),
         "runtime | USD | note",
     ]
     notes = {
@@ -120,13 +131,17 @@ def report(rows: list[Sample] | None = None, *, latency: bool = False) -> str:
         lines.append(f"{name} | {_money(cost)} | {notes[name]}")
     lines += [
         "",
-        "Sources: " + " ".join(f"{name}: {row['source']}" for name, row in MODELS.items()),
-        "AgentCore rates: AWS AgentCore pricing page, Runtime microVM v1 "
-        "($0.0895 per vCPU-hour, $0.00945 per GB-hour).",
+        _line("Sources: ", " ".join(f"{name}: {row['source']}" for name, row in MODELS.items())),
+        _line(
+            "AgentCore rates: AWS AgentCore pricing page, Runtime microVM v1 ",
+            "($0.0895 per vCPU-hour, $0.00945 per GB-hour).",
+        ),
         "Container Apps rates: $0.000024 per vCPU-second and $0.000003 per GiB-second.",
         "Fargate rates: Linux/x86 us-east-1, $0.04048 per vCPU-hour and $0.004445 per GB-hour.",
-        "CloudWatch holds the log group (365-day retention). Ingestion is not priced; "
-        "no live traffic was sent. Azure Monitor would hold the same stdout lines.",
+        _line(
+            "CloudWatch holds the log group (365-day retention). Ingestion is not priced; ",
+            "no live traffic was sent. Azure Monitor would hold the same stdout lines.",
+        ),
     ]
     if latency:
         lines.append("")

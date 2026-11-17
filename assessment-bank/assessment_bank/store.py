@@ -30,9 +30,11 @@ class Attempt(BaseModel):
 
 
 class ProgressStore(Protocol):
-    def save(self, attempt: Attempt) -> Attempt: ...
+    def save(self, attempt: Attempt) -> Attempt:
+        """Persist one attempt and return it."""
 
-    def list_for(self, learner_id: str) -> list[Attempt]: ...
+    def list_for(self, learner_id: str) -> list[Attempt]:
+        """Return the attempts stored for this learner."""
 
 
 class MemoryStore:
