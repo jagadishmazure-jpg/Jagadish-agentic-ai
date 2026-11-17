@@ -4,6 +4,10 @@ Notable changes, newest first. The format follows [Keep a Changelog](https://kee
 
 ## Unreleased
 
+### Fixed
+
+- Container images upgrade Debian packages on top of the pinned Python base so fixable HIGH findings in apt (CVE-2026-109518) and zlib (CVE-2026-85091) do not fail the image scan.
+
 ### Added
 
 - IT desk playbook agent on Amazon Bedrock (`aws-it-desk-agent/`): project 01's corrective RAG graph over an IT playbook, Claude or Llama via InvokeModel when `IT_DESK_PROVIDER=bedrock`, mock otherwise. Terraform for Bedrock AgentCore Runtime or ECS Fargate, CloudWatch logs, and a list-price cost comparison against the Azure path. Offline plan tests. Not applied, and not called against a live Bedrock model.

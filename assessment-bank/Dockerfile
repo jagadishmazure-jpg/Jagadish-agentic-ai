@@ -4,6 +4,10 @@
 FROM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     ASSESSMENT_AUTH_MODE=mock ASSESSMENT_STORE=memory PORT=8080
+# The pinned digest predates Debian 13 fixes for apt (CVE-2026-109518) and zlib (CVE-2026-85091).
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir uv==0.12.23
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
