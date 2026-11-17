@@ -1,0 +1,54 @@
+id: rag-stack
+title: RAG Stack
+questions:
+  - id: rag-q1
+    type: single
+    prompt: What does corrective RAG do when the first retrieval is weak?
+    choices:
+      - {id: a, text: It answers from model memory}
+      - {id: b, text: It rewrites the query and retrieves again, up to a limit}
+      - {id: c, text: It deletes the corpus}
+      - {id: d, text: It always returns the first chunk}
+    answer: b
+    explanation: Project 01 rewrites once. After the attempt budget it says the evidence is missing.
+  - id: rag-q2
+    type: single
+    prompt: Why are citations checked after the draft answer?
+    choices:
+      - {id: a, text: To confirm each claim overlaps a retrieved chunk}
+      - {id: b, text: To make the answer longer}
+      - {id: c, text: To remove the question}
+      - {id: d, text: To train a new embedding model}
+    answer: a
+    explanation: Groundedness fails closed when a sentence is not supported by the packed context.
+  - id: rag-q3
+    type: multi
+    prompt: Which controls does the shared context builder apply before a model sees a chunk?
+    choices:
+      - {id: a, text: ACL by principal}
+      - {id: b, text: As-of validity}
+      - {id: c, text: Instruction-like text is stripped}
+      - {id: d, text: The chunk is emailed to every user}
+    answers: [a, b, c]
+    explanation: Retrieval is filtered by who is asking, when the fact was valid, and a sanitiser.
+  - id: rag-q4
+    type: single
+    prompt: What should the agent say when the corpus does not contain the answer?
+    choices:
+      - {id: a, text: A confident guess}
+      - {id: b, text: That the evidence is insufficient}
+      - {id: c, text: The first document, whatever it is}
+      - {id: d, text: An empty HTTP 200 with no body}
+    answer: b
+    explanation: The policy graph takes the insufficient_evidence exit instead of inventing a policy.
+labs:
+  - id: rag-lab-citations
+    title: Check citations
+    prompt: |
+      Write solution.py with sentences_are_cited(text: str) -> bool.
+      Split on ". " and ignore empty pieces.
+      Return True only when every piece contains an opening and a closing square bracket.
+      An empty string returns True.
+    tests: rag_citations.py
+    points: 3
+    timeout_seconds: 5

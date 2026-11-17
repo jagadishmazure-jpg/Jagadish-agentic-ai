@@ -1,0 +1,53 @@
+id: agentic-core
+title: Agentic Core
+questions:
+  - id: agentic-q1
+    type: single
+    prompt: Where should a step limit live?
+    choices:
+      - {id: a, text: Only as a sentence in the prompt}
+      - {id: b, text: In code that stops the loop}
+      - {id: c, text: In the container image tag}
+      - {id: d, text: In the learner's browser}
+    answer: b
+    explanation: Project 06 enforces max steps, tool cost and loop detection in middleware.
+  - id: agentic-q2
+    type: single
+    prompt: What does interrupt() do before a risky write?
+    choices:
+      - {id: a, text: It pauses until a person approves}
+      - {id: b, text: It deletes the audit log}
+      - {id: c, text: It retries the write forever}
+      - {id: d, text: It switches off authentication}
+    answer: a
+    explanation: Refunds, rollbacks and purchase orders wait for a human at the interrupt.
+  - id: agentic-q3
+    type: multi
+    prompt: Which are tools a governed agent may call through the gateway?
+    choices:
+      - {id: a, text: A read of a system of record}
+      - {id: b, text: A write that is on the identity's allow-list}
+      - {id: c, text: Any shell command on the host}
+      - {id: d, text: A second call that is idempotent on the same key}
+    answers: [a, b, d]
+    explanation: The gateway allow-lists tools per identity. A host shell is not one of those tools.
+  - id: agentic-q4
+    type: single
+    prompt: What is a stop condition?
+    choices:
+      - {id: a, text: A rule that ends the run when a budget or a goal is met}
+      - {id: b, text: A second copy of the prompt}
+      - {id: c, text: The container health check}
+      - {id: d, text: A DNS record}
+    answer: a
+    explanation: Stops keep an autonomous loop from running until the bill or the context is exhausted.
+labs:
+  - id: agentic-lab-stop
+    title: Step budget
+    prompt: |
+      Write solution.py with should_stop(steps: int, max_steps: int) -> bool.
+      Return True when steps is greater than or equal to max_steps, including when both are 0.
+      Return False when steps is smaller than max_steps.
+    tests: agentic_stop.py
+    points: 3
+    timeout_seconds: 5

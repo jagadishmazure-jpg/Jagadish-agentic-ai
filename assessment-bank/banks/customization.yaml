@@ -1,0 +1,53 @@
+id: customization
+title: Customization
+questions:
+  - id: custom-q1
+    type: single
+    prompt: What question does project 19 answer?
+    choices:
+      - {id: a, text: Whether a fine-tune beats a prompted model on a measured task}
+      - {id: b, text: How to store passwords in the prompt}
+      - {id: c, text: Which cloud region is cheapest for GPUs this week}
+      - {id: d, text: How to skip the eval gate after training}
+    answer: a
+    explanation: The study compares a prompted classifier with an offline fine-tune on the same split.
+  - id: custom-q2
+    type: single
+    prompt: Why is the train/test split grouped?
+    choices:
+      - {id: a, text: So near-duplicate documents do not leak from train into test}
+      - {id: b, text: So the test set can include the training rows}
+      - {id: c, text: So labels can be copied from the prompt}
+      - {id: d, text: Grouping is only a file-name convention}
+    answer: a
+    explanation: Project 19 groups related rows so a leak check can fail the build.
+  - id: custom-q3
+    type: multi
+    prompt: Which are reasons to keep a prompted model instead of fine-tuning?
+    choices:
+      - {id: a, text: The labelled set is tiny}
+      - {id: b, text: The task changes every week and the prompt can change with it}
+      - {id: c, text: A fine-tune is always free to serve}
+      - {id: d, text: The prompted model already clears the quality bar}
+    answers: [a, b, d]
+    explanation: Fine-tuning pays off when you have stable labels and a gap the prompt cannot close.
+  - id: custom-q4
+    type: single
+    prompt: What does the promotion gate check before a new model is the champion?
+    choices:
+      - {id: a, text: The eval on the held-out split, with a way to roll back}
+      - {id: b, text: That the file is named final}
+      - {id: c, text: That training loss reached zero}
+      - {id: d, text: That the prompt was deleted}
+    answer: a
+    explanation: Project 19 keeps a registry, a gate and a rollback path. Training loss alone is not the gate.
+labs:
+  - id: customization-lab-choice
+    title: Prompt or fine-tune
+    prompt: |
+      Write solution.py with choose(labelled_examples: int) -> str.
+      Return "prompt" when labelled_examples is under 50.
+      Return "finetune" when it is 50 or more.
+    tests: customization_choice.py
+    points: 3
+    timeout_seconds: 5

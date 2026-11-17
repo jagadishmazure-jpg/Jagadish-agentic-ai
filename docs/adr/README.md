@@ -11,3 +11,4 @@ Short records of the decisions that shape this repo: the context at the time, wh
 | [`0004-eval-gates-block-release.md`](0004-eval-gates-block-release.md) | Eval gates block the build |
 | [`0005-deploy-gated-off.md`](0005-deploy-gated-off.md) | Ship the deploy pipeline switched off |
 | [`0006-doctrine-cards-as-promotion-gate.md`](0006-doctrine-cards-as-promotion-gate.md) | Doctrine cards are a promotion gate |
+| [`0007-aws-and-assessment-bank.md`](0007-aws-and-assessment-bank.md) | IT desk agent on Bedrock, and the course assessment bank |

@@ -1,0 +1,54 @@
+id: frameworks-orchestration
+title: Frameworks & Orchestration
+questions:
+  - id: frameworks-q1
+    type: single
+    prompt: In this portfolio, where does a multi-step workflow live?
+    choices:
+      - {id: a, text: In a LangGraph StateGraph}
+      - {id: b, text: In a single regex}
+      - {id: c, text: Only in the README}
+      - {id: d, text: In the container entrypoint}
+    answer: a
+    explanation: Each project builds a LangGraph graph with typed state and explicit edges.
+  - id: frameworks-q2
+    type: single
+    prompt: What does a router node do in ticket triage?
+    choices:
+      - {id: a, text: It refunds the customer}
+      - {id: b, text: It classifies the ticket and sends it down one branch}
+      - {id: c, text: It fine-tunes a model}
+      - {id: d, text: It deletes the ticket}
+    answer: b
+    explanation: Project 02 routes on a structured classification plus a confidence gate.
+  - id: frameworks-q3
+    type: multi
+    prompt: Which patterns appear in project 21's comparison?
+    choices:
+      - {id: a, text: Supervisor}
+      - {id: b, text: Fan-out and fan-in}
+      - {id: c, text: A manual spreadsheet only}
+      - {id: d, text: Sequential hand-off}
+    answers: [a, b, d]
+    explanation: Project 21 runs eight patterns, including sequential, concurrent fan-out and supervisor.
+  - id: frameworks-q4
+    type: single
+    prompt: Why does the portfolio pass state in a typed object instead of a free string?
+    choices:
+      - {id: a, text: So every node reads and writes known fields}
+      - {id: b, text: So the model can ignore the schema}
+      - {id: c, text: Typed state removes the need for tests}
+      - {id: d, text: Strings cannot be logged}
+    answer: a
+    explanation: Typed state makes the contract between nodes checkable.
+labs:
+  - id: frameworks-lab-route
+    title: Route a ticket
+    prompt: |
+      Write solution.py with route(text: str) -> str.
+      Return "billing" if the text mentions invoice or refund (any case).
+      Return "tech" if it mentions vpn or password.
+      Otherwise return "general". Check billing before tech.
+    tests: frameworks_route.py
+    points: 3
+    timeout_seconds: 5

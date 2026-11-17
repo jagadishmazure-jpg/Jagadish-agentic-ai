@@ -1,0 +1,53 @@
+id: llm-core
+title: LLM Core
+questions:
+  - id: llm-q1
+    type: single
+    prompt: What does temperature 0 ask a chat model to do?
+    choices:
+      - {id: a, text: Sample as randomly as the API allows}
+      - {id: b, text: Prefer the most likely next tokens}
+      - {id: c, text: Skip the system prompt}
+      - {id: d, text: Double the context window}
+    answer: b
+    explanation: The portfolio calls models at temperature 0 so retries are comparable.
+  - id: llm-q2
+    type: single
+    prompt: Why is the mock responder kept in the same shape as a real chat model?
+    choices:
+      - {id: a, text: So graph code does not change between mock and live}
+      - {id: b, text: So the mock can bill a subscription}
+      - {id: c, text: So prompts can be deleted}
+      - {id: d, text: So evals can call the network}
+    answer: a
+    explanation: get_llm returns a BaseChatModel either way. Graphs call invoke the same way.
+  - id: llm-q3
+    type: multi
+    prompt: Which failures should a model chain treat as "try the fallback"?
+    choices:
+      - {id: a, text: A timeout}
+      - {id: b, text: An HTTP 429}
+      - {id: c, text: A correct grounded answer}
+      - {id: d, text: A 5xx from the model endpoint}
+    answers: [a, b, d]
+    explanation: The fallback chain records those errors and moves to the next deployment.
+  - id: llm-q4
+    type: single
+    prompt: What is a context window?
+    choices:
+      - {id: a, text: The maximum tokens the model can take in one call}
+      - {id: b, text: The number of GPUs in the region}
+      - {id: c, text: The log retention in days}
+      - {id: d, text: The size of the container image}
+    answer: a
+    explanation: Prompts, tools and answers have to fit in that budget.
+labs:
+  - id: llm-lab-json
+    title: Parse a model choice
+    prompt: |
+      Write solution.py with parse_choice(text: str) -> str | None.
+      Find a JSON object in the text and return its "choice" string.
+      Return None when the text has no JSON object or no string choice.
+    tests: llm_json.py
+    points: 3
+    timeout_seconds: 5
