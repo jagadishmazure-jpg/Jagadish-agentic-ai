@@ -28,7 +28,7 @@ aws = ["boto3>=1.35,<2"]
 [dependency-groups]
 dev = [
     "pytest>=9.1.1,<10",
-    "ruff>=0.16.9,<0.17",
+    "ruff>=0.16.9,<0.18",
 ]
 
 [build-system]
